@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useComic } from "@/lib/comic/store";
 import { FileDrop } from "./file-drop";
 import { PageRail } from "./page-rail";
+import { PageScroller, type ScrollerHandle } from "./page-scroller";
 import { PageViewport } from "./page-viewport";
 import { ReaderToolbar } from "./reader-toolbar";
 import { Logo } from "@/components/brand/logo";
@@ -39,20 +40,31 @@ export function Reader() {
     goTo,
     next,
     previous,
+    mode,
+    setMode,
     rtl,
     setRtl,
     spread,
     setSpread,
+    rail,
+    setRail,
+    chrome,
+    setChrome,
+    strip,
+    cycleStrip,
   } = useComic();
 
-  const [chromeVisible, setChromeVisible] = useState(true);
-  const [railOpen, setRailOpen] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<ScrollerHandle>(null);
 
   const isWide = useIsWide();
   const reading = status === "ready";
-  const spreadActive = spread && isWide;
+  const scrolling = mode === "scroll";
+  // A spread only exists in paged mode, and only where two pages side by side
+  // are still readable.
+  const canSpread = isWide && !scrolling;
+  const spreadActive = spread && canSpread;
 
 
   // Lock document scrolling while the reader owns the viewport.
@@ -140,16 +152,20 @@ export function Reader() {
           event.preventDefault();
           goLeft();
           break;
+        // Down the strip in scroll mode, on to the next page otherwise. A whole
+        // page per keypress is the wrong unit when the pages are joined up.
         case "ArrowDown":
         case "PageDown":
         case " ":
           event.preventDefault();
-          next();
+          if (scrolling) scrollerRef.current?.scrollByScreen(0.9);
+          else next();
           break;
         case "ArrowUp":
         case "PageUp":
           event.preventDefault();
-          previous();
+          if (scrolling) scrollerRef.current?.scrollByScreen(-0.9);
+          else previous();
           break;
         case "Home":
           event.preventDefault();
@@ -163,16 +179,22 @@ export function Reader() {
           toggleFullscreen();
           break;
         case "s":
-          if (isWide) setSpread(!spread);
+          if (canSpread) setSpread(!spread);
           break;
         case "d":
           setRtl(!rtl);
           break;
         case "t":
-          setRailOpen((open) => !open);
+          setRail(!rail);
+          break;
+        case "v":
+          setMode(scrolling ? "page" : "scroll");
+          break;
+        case "w":
+          if (scrolling) cycleStrip();
           break;
         case "Escape":
-          setChromeVisible(true);
+          setChrome(true);
           break;
       }
     };
@@ -183,7 +205,9 @@ export function Reader() {
     reading,
     rtl,
     spread,
-    isWide,
+    canSpread,
+    scrolling,
+    rail,
     total,
     goLeft,
     goRight,
@@ -193,6 +217,10 @@ export function Reader() {
     toggleFullscreen,
     setSpread,
     setRtl,
+    setRail,
+    setChrome,
+    setMode,
+    cycleStrip,
   ]);
 
   if (status === "idle") {
@@ -264,44 +292,60 @@ export function Reader() {
       data-fullscreen={isFullscreen ? "true" : undefined}
       className="fixed inset-0 flex flex-col bg-background"
     >
-      {chromeVisible ? (
+      {chrome ? (
         <ReaderToolbar
           fileName={fileName ?? ""}
           index={index}
           total={total}
           thumbsReady={thumbsReady}
+          mode={mode}
+          setMode={setMode}
           rtl={rtl}
           setRtl={setRtl}
           spread={spread}
           setSpread={setSpread}
-          railOpen={railOpen}
-          setRailOpen={setRailOpen}
+          railOpen={rail}
+          setRailOpen={setRail}
           onFullscreen={toggleFullscreen}
           isFullscreen={isFullscreen}
-          canSpread={isWide}
+          canSpread={canSpread}
+          strip={strip}
+          cycleStrip={cycleStrip}
+          canStrip={isWide}
         />
       ) : null}
 
-      <PageViewport
-        pages={ordered.map((pageIndex) => pages[pageIndex])}
-        currentIndex={index}
-        onSwipeLeft={goRight}
-        onSwipeRight={goLeft}
-        onTapLeft={goLeft}
-        onTapRight={goRight}
-        onTapCentre={() => setChromeVisible((visible) => !visible)}
-      />
+      {scrolling ? (
+        <PageScroller
+          ref={scrollerRef}
+          pages={pages}
+          index={index}
+          strip={isWide ? strip : 1}
+          onIndexChange={goTo}
+          onTapCentre={() => setChrome(!chrome)}
+        />
+      ) : (
+        <PageViewport
+          pages={ordered.map((pageIndex) => pages[pageIndex])}
+          currentIndex={index}
+          onSwipeLeft={goRight}
+          onSwipeRight={goLeft}
+          onTapLeft={goLeft}
+          onTapRight={goRight}
+          onTapCentre={() => setChrome(!chrome)}
+        />
+      )}
 
-      {chromeVisible && railOpen ? (
+      {chrome && rail ? (
         <PageRail pages={pages} index={index} rtl={rtl} onSelect={goTo} />
       ) : null}
 
       {/* When the chrome is hidden there is no visible way back, so leave one
           affordance that doesn't cover the art. */}
-      {!chromeVisible ? (
+      {!chrome ? (
         <button
           type="button"
-          onClick={() => setChromeVisible(true)}
+          onClick={() => setChrome(true)}
           className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] rounded-full bg-black/55 px-3 py-2 text-xs text-white backdrop-blur"
         >
           {index + 1}/{total}

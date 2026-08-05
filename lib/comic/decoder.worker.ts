@@ -276,7 +276,9 @@ async function pump() {
 const canThumbnail =
   typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap === "function";
 
-async function makeThumb(bytes: ArrayBuffer, mime: string): Promise<Blob | null> {
+type Thumb = { blob: Blob; width: number; height: number };
+
+async function makeThumb(bytes: ArrayBuffer, mime: string): Promise<Thumb | null> {
   if (!canThumbnail) return null;
   let bitmap: ImageBitmap;
   try {
@@ -294,7 +296,10 @@ async function makeThumb(bytes: ArrayBuffer, mime: string): Promise<Blob | null>
     const context = canvas.getContext("2d");
     if (!context) return null;
     context.drawImage(bitmap, 0, 0);
-    return await canvas.convertToBlob({ type: "image/webp", quality: 0.72 });
+    const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.72 });
+    // `resizeWidth` alone preserves the aspect ratio, so the bitmap's shape is
+    // the page's shape.
+    return { blob, width: bitmap.width, height: bitmap.height };
   } catch {
     return null;
   } finally {
@@ -331,8 +336,18 @@ async function buildThumbnails(generation: number) {
     const thumb = await makeThumb(page.bytes, page.mime);
     if (generation !== thumbGeneration) return;
     if (thumb) {
-      const buffer = await thumb.arrayBuffer();
-      post({ type: "thumb", index, bytes: buffer, mime: thumb.type }, [buffer]);
+      const buffer = await thumb.blob.arrayBuffer();
+      post(
+        {
+          type: "thumb",
+          index,
+          bytes: buffer,
+          mime: thumb.blob.type,
+          width: thumb.width,
+          height: thumb.height,
+        },
+        [buffer],
+      );
     }
     post({ type: "thumbs-progress", ready: index + 1, total });
   }

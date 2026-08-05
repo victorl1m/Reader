@@ -83,9 +83,13 @@ export function PageViewport({
 
   // --- derived geometry -------------------------------------------------
 
-  const sizes = pages.map((page) =>
-    page && natural[page.index] ? natural[page.index] : ASSUMED,
-  );
+  // Best shape available: measured from the decoded image, else the ratio the
+  // thumbnail pass reported, else a guess.
+  const sizes = pages.map((page) => {
+    if (page && natural[page.index]) return natural[page.index];
+    if (page?.ratio) return { w: ASSUMED.h * page.ratio, h: ASSUMED.h };
+    return ASSUMED;
+  });
   const contentW =
     sizes.reduce((sum, size) => sum + size.w, 0) + GAP * Math.max(0, sizes.length - 1);
   const contentH = sizes.reduce((max, size) => Math.max(max, size.h), 0);

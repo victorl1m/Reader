@@ -36,6 +36,13 @@ export type WorkerResponse =
       index: number;
       bytes: ArrayBuffer;
       mime: string;
+      /**
+       * Thumbnail pixel size. The thumbnail is a scaled copy, so this is only
+       * useful as a shape: it lets the reader reserve the right box for a page
+       * that hasn't been decoded yet, instead of guessing and reflowing.
+       */
+      width: number;
+      height: number;
     }
   | { type: "thumbs-progress"; ready: number; total: number }
   | { type: "thumbs-done" }
@@ -63,6 +70,12 @@ export type Page = {
   url: string | null;
   /** Object URL for the rail thumbnail. Retained for the whole session. */
   thumb: string | null;
+  /**
+   * Width divided by height, learned from the thumbnail pass long before the
+   * full-size page is decoded. Both reading modes reserve the page's box from
+   * this, so a page arriving doesn't shove the layout around.
+   */
+  ratio: number | null;
 };
 
 export type ComicStatus = "idle" | "opening" | "ready" | "error";

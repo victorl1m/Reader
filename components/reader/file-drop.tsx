@@ -1,9 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useComic } from "@/lib/comic/store";
-import { LIMITS } from "@/lib/comic/types";
+import { useEffect, useId, useRef, useState } from "react";
+import { useOpenFile } from "@/lib/comic/use-open-file";
 
 /**
  * The file input deliberately carries no `accept` filter.
@@ -20,38 +18,10 @@ import { LIMITS } from "@/lib/comic/types";
  * requirement when the page has nothing else on it.
  */
 export function FileDrop() {
-  const router = useRouter();
-  const { open } = useComic();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [rejected, setRejected] = useState<string | null>(null);
   const inputId = useId();
-
-  const accept = useCallback(
-    (file: File | undefined | null) => {
-      if (!file) return;
-
-      // Caught here as well as in the worker so an obviously impossible file
-      // never gets read into memory at all.
-      if (file.size > LIMITS.maxArchiveBytes) {
-        setRejected(
-          `“${file.name}” tem ${(file.size / 1024 ** 3).toFixed(1)} GB. O Flowless abre arquivos de até ${
-            LIMITS.maxArchiveBytes / 1024 ** 3
-          } GB.`,
-        );
-        return;
-      }
-      if (file.size === 0) {
-        setRejected(`“${file.name}” está vazio.`);
-        return;
-      }
-
-      setRejected(null);
-      open(file);
-      router.push("/read");
-    },
-    [open, router],
-  );
+  const { accept, rejected } = useOpenFile();
 
   // Launched from the manifest shortcut (`/?open=1`): go straight to the
   // picker. Read from `location` rather than `searchParams` so the landing

@@ -19,7 +19,14 @@ async function freshPrefs(stored?: string | null) {
   return { prefs: await import("./prefs"), store };
 }
 
-const DEFAULTS = { fit: "height", rtl: false, spread: false };
+const DEFAULTS = {
+  mode: "page",
+  rtl: false,
+  spread: false,
+  rail: true,
+  chrome: true,
+  strip: 1,
+};
 
 describe("prefs", () => {
   beforeEach(() => {
@@ -32,13 +39,22 @@ describe("prefs", () => {
   });
 
   it("renders defaults on the server", async () => {
-    const { prefs: module } = await freshPrefs('{"fit":"width"}');
+    const { prefs: module } = await freshPrefs('{"mode":"scroll"}');
     expect(module.getServerPrefs()).toEqual(DEFAULTS);
   });
 
-  it("restores stored values", async () => {
-    const { prefs: module } = await freshPrefs('{"fit":"width","rtl":true,"spread":true}');
-    expect(module.getPrefs()).toEqual({ fit: "width", rtl: true, spread: true });
+  it("restores every stored setting", async () => {
+    const { prefs: module } = await freshPrefs(
+      '{"mode":"scroll","rtl":true,"spread":true,"rail":false,"chrome":false,"strip":0.8}',
+    );
+    expect(module.getPrefs()).toEqual({
+      mode: "scroll",
+      rtl: true,
+      spread: true,
+      rail: false,
+      chrome: false,
+      strip: 0.8,
+    });
   });
 
   it("falls back to defaults on corrupt JSON", async () => {
@@ -46,14 +62,30 @@ describe("prefs", () => {
     expect(module.getPrefs()).toEqual(DEFAULTS);
   });
 
-  it("rejects an out-of-range fit mode", async () => {
-    const { prefs: module } = await freshPrefs('{"fit":"sideways"}');
-    expect(module.getPrefs().fit).toBe("height");
+  it("rejects an unknown reading mode", async () => {
+    const { prefs: module } = await freshPrefs('{"mode":"sideways"}');
+    expect(module.getPrefs().mode).toBe("page");
+  });
+
+  it("rejects a strip width that isn't on offer", async () => {
+    const { prefs: module } = await freshPrefs('{"strip":0.11}');
+    expect(module.getPrefs().strip).toBe(1);
   });
 
   it("rejects non-boolean flags", async () => {
-    const { prefs: module } = await freshPrefs('{"rtl":"yes","spread":1}');
+    const { prefs: module } = await freshPrefs('{"rtl":"yes","spread":1,"rail":0}');
     expect(module.getPrefs()).toEqual(DEFAULTS);
+  });
+
+  it("cycles strip widths and wraps around", async () => {
+    const { prefs: module } = await freshPrefs(null);
+    const [widest, ...rest] = module.STRIP_WIDTHS;
+    let width: number = widest;
+    for (const expected of rest) {
+      width = module.nextStripWidth(width);
+      expect(width).toBe(expected);
+    }
+    expect(module.nextStripWidth(width)).toBe(widest);
   });
 
   it("returns a stable reference until something changes", async () => {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo";
+import type { ReadingMode } from "@/lib/comic/prefs";
 
 function Icon({ path }: { path: string }) {
   return (
@@ -29,6 +30,10 @@ const ICONS = {
   pages: "M4 6h4v12H4zm6 0h4v12h-4zm6 0h4v12h-4z",
   full: "M4 9V4h5M20 9V4h-5M4 15v5h5m11-5v5h-5",
   exit: "M9 4v5H4m11-5v5h5M9 20v-5H4m11 5v-5h5",
+  // Stacked pages joined by an arrow: one continuous strip.
+  scroll: "M8 3h8M8 21h8M12 7v10m0 0-3-3m3 3 3-3",
+  paged: "M6 4h12v16H6z",
+  width: "M3 6v12m18-12v12M7 12h10m0 0-3-3m3 3-3 3M7 12l3-3m-3 3 3 3",
 };
 
 function ToolButton({
@@ -73,6 +78,8 @@ export function ReaderToolbar({
   index,
   total,
   thumbsReady,
+  mode,
+  setMode,
   rtl,
   setRtl,
   spread,
@@ -82,11 +89,16 @@ export function ReaderToolbar({
   onFullscreen,
   isFullscreen,
   canSpread,
+  strip,
+  cycleStrip,
+  canStrip,
 }: {
   fileName: string;
   index: number;
   total: number;
   thumbsReady: number;
+  mode: ReadingMode;
+  setMode: (mode: ReadingMode) => void;
   rtl: boolean;
   setRtl: (rtl: boolean) => void;
   spread: boolean;
@@ -95,9 +107,15 @@ export function ReaderToolbar({
   setRailOpen: (open: boolean) => void;
   onFullscreen: () => void;
   isFullscreen: boolean;
-  /** False in portrait, where two pages side by side are unreadable. */
+  /** False in portrait or scroll mode, where a spread makes no sense. */
   canSpread: boolean;
+  /** Strip width in scroll mode, as a fraction of the viewport. */
+  strip: number;
+  cycleStrip: () => void;
+  /** False on a narrow screen, where the strip always fills the width. */
+  canStrip: boolean;
 }) {
+  const scrolling = mode === "scroll";
   const preparing = total > 0 && thumbsReady < total;
 
   return (
@@ -126,6 +144,21 @@ export function ReaderToolbar({
       </span>
 
       <div className="flex shrink-0 items-center">
+        <ToolButton
+          onClick={() => setMode(scrolling ? "page" : "scroll")}
+          active={scrolling}
+          label={scrolling ? "Leitura em rolagem contínua" : "Leitura página por página"}
+          icon={scrolling ? ICONS.scroll : ICONS.paged}
+          text={scrolling ? "Rolagem" : "Página"}
+        />
+        {scrolling && canStrip ? (
+          <ToolButton
+            onClick={cycleStrip}
+            label="Largura da tira"
+            icon={ICONS.width}
+            text={`${Math.round(strip * 100)}%`}
+          />
+        ) : null}
         {canSpread ? (
           <ToolButton
             onClick={() => setSpread(!spread)}
@@ -148,7 +181,7 @@ export function ReaderToolbar({
           active={railOpen}
           label="Miniaturas das páginas"
           icon={ICONS.pages}
-          text="Páginas"
+          text="Miniaturas"
         />
         <ToolButton
           onClick={onFullscreen}

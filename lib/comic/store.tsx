@@ -22,12 +22,14 @@ import type {
 import {
   getPrefs,
   getServerPrefs,
+  nextStripWidth,
   setPrefs,
   subscribePrefs,
-  type FitMode,
+  type ReadingMode,
 } from "./prefs";
+import { recallSpot, rememberSpot } from "./library";
 
-export type { FitMode };
+export type { ReadingMode };
 
 /**
  * How many full-size pages stay decoded at once.
@@ -48,8 +50,8 @@ function retentionWindow(): number {
 
 type State = {
   status: ComicStatus;
+  /** Also the key the reading position is remembered under. */
   fileName: string | null;
-  fileKey: string | null;
   format: ArchiveFormat | null;
   pages: Page[];
   thumbsReady: number;
@@ -59,7 +61,6 @@ type State = {
 const initialState: State = {
   status: "idle",
   fileName: null,
-  fileKey: null,
   format: null,
   pages: [],
   thumbsReady: 0,
@@ -67,10 +68,10 @@ const initialState: State = {
 };
 
 type Action =
-  | { type: "open"; fileName: string; fileKey: string }
+  | { type: "open"; fileName: string }
   | { type: "meta"; format: ArchiveFormat; pages: string[] }
   | { type: "page"; index: number; url: string }
-  | { type: "thumb"; index: number; url: string }
+  | { type: "thumb"; index: number; url: string; ratio: number | null }
   | { type: "evict"; indices: number[] }
   | { type: "thumbs-progress"; ready: number }
   | { type: "error"; message: string; code: ComicErrorCode }
@@ -83,7 +84,6 @@ function reducer(state: State, action: Action): State {
         ...initialState,
         status: "opening",
         fileName: action.fileName,
-        fileKey: action.fileKey,
       };
     case "meta":
       return {
@@ -95,6 +95,7 @@ function reducer(state: State, action: Action): State {
           name,
           url: null,
           thumb: null,
+          ratio: null,
         })),
       };
     case "page": {
@@ -108,7 +109,11 @@ function reducer(state: State, action: Action): State {
       const page = state.pages[action.index];
       if (!page) return state;
       const pages = state.pages.slice();
-      pages[action.index] = { ...page, thumb: action.url };
+      pages[action.index] = {
+        ...page,
+        thumb: action.url,
+        ratio: action.ratio ?? page.ratio,
+      };
       return { ...state, pages };
     }
     case "evict": {
@@ -145,72 +150,40 @@ type ComicContextValue = State & {
   goTo: (index: number) => void;
   next: () => void;
   previous: () => void;
-  fit: FitMode;
-  setFit: (fit: FitMode) => void;
+  mode: ReadingMode;
+  setMode: (mode: ReadingMode) => void;
   rtl: boolean;
   setRtl: (rtl: boolean) => void;
   spread: boolean;
   setSpread: (spread: boolean) => void;
+  rail: boolean;
+  setRail: (rail: boolean) => void;
+  chrome: boolean;
+  setChrome: (chrome: boolean) => void;
+  strip: number;
+  cycleStrip: () => void;
 };
 
 const ComicContext = createContext<ComicContextValue | null>(null);
-
-const POSITION_PREFIX = "flowless:position:v1:";
-const positionKey = (fileKey: string) => `${POSITION_PREFIX}${fileKey}`;
-/** Cap on remembered reading positions, so storage can't grow without bound. */
-const MAX_REMEMBERED_POSITIONS = 100;
-
-function rememberPosition(fileKey: string, index: number) {
-  try {
-    localStorage.setItem(positionKey(fileKey), JSON.stringify({ index, at: Date.now() }));
-
-    const keys = Object.keys(localStorage).filter((key) =>
-      key.startsWith(POSITION_PREFIX),
-    );
-    if (keys.length <= MAX_REMEMBERED_POSITIONS) return;
-
-    // Drop the least recently read entries.
-    const aged = keys
-      .map((key) => {
-        try {
-          return { key, at: JSON.parse(localStorage.getItem(key) ?? "{}").at ?? 0 };
-        } catch {
-          return { key, at: 0 };
-        }
-      })
-      .sort((a, b) => a.at - b.at);
-
-    for (const { key } of aged.slice(0, keys.length - MAX_REMEMBERED_POSITIONS)) {
-      localStorage.removeItem(key);
-    }
-  } catch {
-    // Storage being unavailable only costs the resume feature.
-  }
-}
-
-function recallPosition(fileKey: string): number {
-  try {
-    const raw = localStorage.getItem(positionKey(fileKey));
-    if (!raw) return 0;
-    const value = JSON.parse(raw) as { index?: unknown };
-    return typeof value.index === "number" && value.index > 0 ? value.index : 0;
-  } catch {
-    return 0;
-  }
-}
 
 export function ComicProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [index, setIndex] = useState(0);
 
-  const { fit, rtl, spread } = useSyncExternalStore(
+  const { mode, rtl, spread, rail, chrome, strip } = useSyncExternalStore(
     subscribePrefs,
     getPrefs,
     getServerPrefs,
   );
-  const setFit = useCallback((next: FitMode) => setPrefs({ fit: next }), []);
+  const setMode = useCallback((next: ReadingMode) => setPrefs({ mode: next }), []);
   const setRtl = useCallback((next: boolean) => setPrefs({ rtl: next }), []);
   const setSpread = useCallback((next: boolean) => setPrefs({ spread: next }), []);
+  const setRail = useCallback((next: boolean) => setPrefs({ rail: next }), []);
+  const setChrome = useCallback((next: boolean) => setPrefs({ chrome: next }), []);
+  const cycleStrip = useCallback(
+    () => setPrefs({ strip: nextStripWidth(getPrefs().strip) }),
+    [],
+  );
 
   const workerRef = useRef<Worker | null>(null);
   /** Full-size object URLs currently held, keyed by page index. */
@@ -245,7 +218,12 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
     if (!worker || state.status !== "ready" || !total) return;
 
     const size = retentionWindow();
-    const behind = Math.max(2, Math.floor(size / 4));
+    // Scrolling shows several pages at once and is as likely to be going back
+    // up as down, so the window sits more evenly around the current page.
+    const behind =
+      mode === "scroll"
+        ? Math.max(3, Math.floor(size / 3))
+        : Math.max(2, Math.floor(size / 4));
     const first = Math.max(0, index - behind);
     const last = Math.min(total - 1, index + (size - behind));
 
@@ -270,24 +248,25 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
       }
     }
     if (evicted.length) dispatch({ type: "evict", indices: evicted });
-  }, [index, total, state.status]);
+  }, [index, total, state.status, mode]);
 
-  // Remember where the reader left off, per archive.
+  // Remember where the reader left off, under the file's name.
   useEffect(() => {
-    if (!state.fileKey || state.status !== "ready") return;
-    rememberPosition(state.fileKey, index);
-  }, [index, state.fileKey, state.status]);
+    if (!state.fileName || state.status !== "ready" || !total) return;
+    rememberSpot(state.fileName, index, total, Date.now());
+  }, [index, state.fileName, state.status, total]);
 
   const open = useCallback(
     (file: File) => {
       teardown();
       setIndex(0);
 
-      const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
-      const resume = recallPosition(fileKey);
+      // Keyed by name only, so the position survives the file being moved or
+      // downloaded again.
+      const resume = recallSpot(file.name)?.index ?? 0;
       resumeRef.current = resume;
 
-      dispatch({ type: "open", fileName: file.name, fileKey });
+      dispatch({ type: "open", fileName: file.name });
 
       const worker = new Worker(new URL("./decoder.worker.ts", import.meta.url), {
         type: "module",
@@ -321,7 +300,12 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
               new Blob([message.bytes], { type: message.mime }),
             );
             thumbsRef.current.set(message.index, url);
-            dispatch({ type: "thumb", index: message.index, url });
+            dispatch({
+              type: "thumb",
+              index: message.index,
+              url,
+              ratio: message.height ? message.width / message.height : null,
+            });
             break;
           }
           case "thumbs-progress":
@@ -370,7 +354,9 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
     [total],
   );
 
-  const step = spread ? 2 : 1;
+  // A spread turns two pages at a time; scrolling always moves one, since the
+  // reader can see both anyway.
+  const step = spread && mode === "page" ? 2 : 1;
   const next = useCallback(() => goTo(index + step), [goTo, index, step]);
   const previous = useCallback(() => goTo(index - step), [goTo, index, step]);
 
@@ -384,12 +370,18 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
       goTo,
       next,
       previous,
-      fit,
-      setFit,
+      mode,
+      setMode,
       rtl,
       setRtl,
       spread,
       setSpread,
+      rail,
+      setRail,
+      chrome,
+      setChrome,
+      strip,
+      cycleStrip,
     }),
     [
       state,
@@ -400,12 +392,18 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
       goTo,
       next,
       previous,
-      fit,
-      setFit,
+      mode,
+      setMode,
       rtl,
       setRtl,
       spread,
       setSpread,
+      rail,
+      setRail,
+      chrome,
+      setChrome,
+      strip,
+      cycleStrip,
     ],
   );
 
@@ -419,3 +417,4 @@ export function useComic() {
   }
   return context;
 }
+
