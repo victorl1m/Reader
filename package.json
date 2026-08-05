@@ -13,7 +13,8 @@
     "verify": "npm run typecheck && npm run lint && npm run test",
     "sync:assets": "node scripts/sync-unrar-wasm.mjs && node scripts/build-sw.mjs",
     "predev": "npm run sync:assets",
-    "prebuild": "npm run sync:assets"
+    "prebuild": "npm run sync:assets",
+    "postbuild": "node scripts/build-sw.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",

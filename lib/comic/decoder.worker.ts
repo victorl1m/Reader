@@ -58,18 +58,36 @@ function detach(view: Uint8Array): ArrayBuffer {
 /** The wasm build of unrar is ~200 KB; fetch it once per worker, not per file. */
 let wasmBinary: ArrayBuffer | null = null;
 async function getWasm(): Promise<ArrayBuffer> {
-  if (!wasmBinary) {
-    const url = new URL("unrar.wasm", ctx.location.origin + "/");
+  if (wasmBinary) return wasmBinary;
+
+  const url = new URL("unrar.wasm", ctx.location.origin + "/").toString();
+
+  try {
     const res = await fetch(url, { cache: "force-cache" });
-    if (!res.ok) {
-      throw new DecodeError(
-        `Não foi possível carregar o decodificador RAR (${res.status}). Verifique sua conexão e recarregue.`,
-        "corrupt",
-      );
+    if (res.ok) {
+      wasmBinary = await res.arrayBuffer();
+      return wasmBinary;
     }
-    wasmBinary = await res.arrayBuffer();
+  } catch {
+    // Offline, and no service worker in front of this request. Fall through.
   }
-  return wasmBinary;
+
+  // The service worker precaches the decoder, so read it straight out of the
+  // cache rather than failing just because the network is gone.
+  try {
+    const cached = await caches.match(url);
+    if (cached?.ok) {
+      wasmBinary = await cached.arrayBuffer();
+      return wasmBinary;
+    }
+  } catch {
+    // Cache Storage unavailable; report the original failure below.
+  }
+
+  throw new DecodeError(
+    "Não foi possível carregar o decodificador RAR. Conecte-se uma vez para o app terminar de se instalar.",
+    "corrupt",
+  );
 }
 
 type Archive = {

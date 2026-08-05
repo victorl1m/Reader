@@ -5,17 +5,35 @@
  * disk — so offline support only needs the app shell and the RAR decoder wasm.
  * Nothing a user opens is ever cached.
  *
- * `BUILD` is rewritten at build time by `scripts/build-sw.mjs`, so a deploy
- * always lands in a fresh cache instead of serving the previous shell forever.
+ * `BUILD` and `BUILD_ASSETS` are rewritten at build time by
+ * `scripts/build-sw.mjs`, so a deploy always lands in a fresh cache instead of
+ * serving the previous shell forever.
  */
 
 const BUILD = "__BUILD_ID__";
 const SHELL_CACHE = `flowless-shell-${BUILD}`;
 const ASSET_CACHE = `flowless-assets-${BUILD}`;
 
+/**
+ * Every JS chunk the build produced.
+ *
+ * Caching these lazily is not enough. The decoder lives in a worker chunk that
+ * is only fetched the first time a comic is opened, so a reader who installed
+ * the app and then went offline had nothing to load: the shell came back but
+ * picking a file failed. Precaching the build means the reader works offline
+ * from the moment it is installed.
+ */
+const BUILD_ASSETS = __PRECACHE_ASSETS__;
+
 /** Routes that must work with no network at all. */
 const SHELL_ROUTES = ["/", "/read"];
-const PRECACHE = [...SHELL_ROUTES, "/unrar.wasm", "/icon.svg", "/manifest.webmanifest"];
+const PRECACHE = [
+  ...SHELL_ROUTES,
+  "/unrar.wasm",
+  "/icon.svg",
+  "/manifest.webmanifest",
+  ...BUILD_ASSETS,
+];
 
 /** Runtime asset cache ceiling, so a long session can't grow without bound. */
 const MAX_ASSET_ENTRIES = 120;

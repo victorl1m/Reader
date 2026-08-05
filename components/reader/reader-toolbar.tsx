@@ -2,21 +2,14 @@
 
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/logo";
-import type { FitMode } from "@/lib/comic/store";
 
-const FIT_LABELS: Record<FitMode, string> = {
-  height: "Ajustar página",
-  width: "Ajustar largura",
-  original: "Tamanho real",
-};
-
-function Icon({ path, filled }: { path: string; filled?: boolean }) {
+function Icon({ path }: { path: string }) {
   return (
     <svg
       width="18"
       height="18"
       viewBox="0 0 24 24"
-      fill={filled ? "currentColor" : "none"}
+      fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
       strokeLinecap="round"
@@ -29,9 +22,6 @@ function Icon({ path, filled }: { path: string; filled?: boolean }) {
 }
 
 const ICONS = {
-  fitPage: "M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3",
-  fitWidth: "M3 8v8m18-8v8M7 12h10m0 0-3-3m3 3-3 3",
-  actual: "M4 4h16v16H4zM9 9h6v6H9z",
   spread: "M12 5v14M5 5h14v14H5z",
   single: "M7 4h10v16H7z",
   rtl: "M20 12H4m0 0 6-6m-6 6 6 6",
@@ -47,13 +37,15 @@ function ToolButton({
   label,
   icon,
   text,
+  alwaysShowText,
 }: {
   onClick: () => void;
   active?: boolean;
   label: string;
   icon: string;
-  /** Shown next to the icon on wide screens only. */
+  /** Shown next to the icon on wide screens, or always with `alwaysShowText`. */
   text?: string;
+  alwaysShowText?: boolean;
 }) {
   return (
     <button
@@ -69,7 +61,9 @@ function ToolButton({
       }`}
     >
       <Icon path={icon} />
-      {text ? <span className="hidden lg:inline">{text}</span> : null}
+      {text ? (
+        <span className={alwaysShowText ? "inline" : "hidden lg:inline"}>{text}</span>
+      ) : null}
     </button>
   );
 }
@@ -79,9 +73,6 @@ export function ReaderToolbar({
   index,
   total,
   thumbsReady,
-  fit,
-  fitOrder,
-  setFit,
   rtl,
   setRtl,
   spread,
@@ -96,10 +87,6 @@ export function ReaderToolbar({
   index: number;
   total: number;
   thumbsReady: number;
-  fit: FitMode;
-  /** Modes this screen offers, in cycle order. */
-  fitOrder: FitMode[];
-  setFit: (fit: FitMode) => void;
   rtl: boolean;
   setRtl: (rtl: boolean) => void;
   spread: boolean;
@@ -111,10 +98,7 @@ export function ReaderToolbar({
   /** False in portrait, where two pages side by side are unreadable. */
   canSpread: boolean;
 }) {
-  const nextFit = fitOrder[(fitOrder.indexOf(fit) + 1) % fitOrder.length];
   const preparing = total > 0 && thumbsReady < total;
-  const fitIcon =
-    fit === "height" ? ICONS.fitPage : fit === "width" ? ICONS.fitWidth : ICONS.actual;
 
   return (
     <header
@@ -142,12 +126,6 @@ export function ReaderToolbar({
       </span>
 
       <div className="flex shrink-0 items-center">
-        <ToolButton
-          onClick={() => setFit(nextFit)}
-          label={`Mudar visualização, atualmente ${FIT_LABELS[fit]}`}
-          icon={fitIcon}
-          text={FIT_LABELS[fit]}
-        />
         {canSpread ? (
           <ToolButton
             onClick={() => setSpread(!spread)}
@@ -163,6 +141,7 @@ export function ReaderToolbar({
           label="Ordem mangá, da direita para a esquerda"
           icon={rtl ? ICONS.rtl : ICONS.ltr}
           text={rtl ? "RTL" : "LTR"}
+          alwaysShowText
         />
         <ToolButton
           onClick={() => setRailOpen(!railOpen)}
