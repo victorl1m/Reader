@@ -7,6 +7,9 @@ import { promptInstall } from "@/lib/pwa/install";
  * Compact install action for the header. Unlike the banner this ignores the
  * "not now" dismissal, so someone who waved the prompt away still has a way
  * back to it.
+ *
+ * Once the app is installed it stops appearing for good, and the header slot
+ * belongs to `UpdateHint` instead.
  */
 export function InstallButton() {
   const { status } = useInstall();

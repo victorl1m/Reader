@@ -3,7 +3,10 @@ import { SITE } from "@/lib/site";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: SITE.title,
+    // The app name, not the page title: the installed app shows this in front
+    // of the document title, and "Flowless Reader: Mangá e Quadrinhos - …"
+    // spent the whole window on branding before saying anything.
+    name: SITE.name,
     short_name: SITE.shortName,
     description: SITE.description,
     id: "/",
@@ -64,7 +67,7 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: "Abrir um quadrinho",
         short_name: "Abrir",
-        description: "Escolha um .cbr ou .cbz do seu dispositivo",
+        description: "Escolha um .cbr ou .cbz do seu aparelho",
         url: "/?open=1",
       },
     ],

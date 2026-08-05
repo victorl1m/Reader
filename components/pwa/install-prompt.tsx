@@ -10,7 +10,11 @@ import { dismissInstall, promptInstall } from "@/lib/pwa/install";
  * and the visitor hasn't recently said no.
  *
  * iOS Safari can install a PWA but exposes no API for it, so that path shows
- * the actual steps instead of a button that couldn't do anything.
+ * the actual steps instead of a button that couldn't do anything. It also never
+ * tells us the install happened, and a home-screen app on iOS can't see what
+ * Safari stored, so "Entendi" is taken as the answer: someone who read the
+ * steps has either followed them or decided not to, and either way doesn't need
+ * asking again.
  */
 export function InstallPrompt() {
   const { status, dismissed } = useInstall();
@@ -103,8 +107,12 @@ export function InstallPrompt() {
           <button
             type="button"
             onClick={() => {
-              if (manual) setShowSteps((open) => !open);
-              else void promptInstall();
+              if (!manual) {
+                void promptInstall();
+                return;
+              }
+              if (showSteps) dismissInstall();
+              else setShowSteps(true);
             }}
             aria-expanded={manual ? showSteps : undefined}
             className="flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"

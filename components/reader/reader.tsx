@@ -2,19 +2,27 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useComic } from "@/lib/comic/store";
-import { FileDrop } from "./file-drop";
 import { PageRail } from "./page-rail";
 import { PageScroller, type ScrollerHandle } from "./page-scroller";
 import { PageViewport } from "./page-viewport";
 import { ReaderToolbar } from "./reader-toolbar";
-import { Logo } from "@/components/brand/logo";
 
 /**
  * Below this width a two-page spread puts each page at postage-stamp size, so
  * the mode is hidden rather than offered and then fought with.
  */
 const WIDE_MIN_WIDTH = 720;
+
+/**
+ * How long `/read` waits before bouncing an empty reader home.
+ *
+ * An OS "abrir com" launch lands on this route with nothing open and the file
+ * handle still resolving, so the empty state gets a beat to turn into a real
+ * comic instead of throwing the reader out to the home page and back.
+ */
+const LAUNCH_GRACE_MS = 300;
 
 function useIsWide() {
   const [isWide, setIsWide] = useState(true);
@@ -54,6 +62,7 @@ export function Reader() {
     cycleStrip,
   } = useComic();
 
+  const router = useRouter();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<ScrollerHandle>(null);
@@ -66,6 +75,31 @@ export function Reader() {
   const canSpread = isWide && !scrolling;
   const spreadActive = spread && canSpread;
 
+
+  // Nothing open means there is nothing to read: the file picker lives on the
+  // home page, so send the reader there rather than growing a second one here.
+  useEffect(() => {
+    if (status !== "idle") return;
+    const timer = window.setTimeout(() => router.replace("/"), LAUNCH_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [status, router]);
+
+  /**
+   * Name the window after whatever is open.
+   *
+   * The installed app shows the document title beside the app name in window
+   * chrome and the task switcher, where "Flowless Reader - Leitura" tells you
+   * nothing about which comic that window is. The extension is dropped because
+   * it is noise in a title bar, not because it means anything here.
+   */
+  useEffect(() => {
+    if (!fileName) return;
+    const previous = document.title;
+    document.title = fileName.replace(/\.[^.]+$/, "");
+    return () => {
+      document.title = previous;
+    };
+  }, [fileName]);
 
   // Lock document scrolling while the reader owns the viewport.
   useEffect(() => {
@@ -223,19 +257,10 @@ export function Reader() {
     cycleStrip,
   ]);
 
+  // Held blank on the way out: the redirect above is a frame or two away and a
+  // half-second of empty state would only read as a flicker.
   if (status === "idle") {
-    return (
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-8 px-5 py-12 text-center sm:px-6 sm:py-16">
-        <Logo size={40} />
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold">Nada aberto ainda</h1>
-          <p className="text-muted">
-            Escolha um arquivo de quadrinho e ele abre aqui mesmo.
-          </p>
-        </div>
-        <FileDrop />
-      </main>
-    );
+    return <main className="flex-1" aria-hidden />;
   }
 
   if (status === "error") {
@@ -321,6 +346,7 @@ export function Reader() {
           pages={pages}
           index={index}
           strip={isWide ? strip : 1}
+          rtl={rtl}
           onIndexChange={goTo}
           onTapCentre={() => setChrome(!chrome)}
         />

@@ -45,6 +45,7 @@ export function PageScroller({
   pages,
   index,
   strip,
+  rtl,
   ref,
   onIndexChange,
   onTapCentre,
@@ -54,6 +55,8 @@ export function PageScroller({
   index: number;
   /** Strip width as a fraction of the viewport. */
   strip: number;
+  /** Manga order: the strip runs last page first, so down the screen is back. */
+  rtl: boolean;
   ref: RefObject<ScrollerHandle | null>;
   onIndexChange: (index: number) => void;
   onTapCentre: () => void;
@@ -124,6 +127,24 @@ export function PageScroller({
     landed.current = true;
   }, [index, pages.length]);
 
+  // Flipping the direction turns the strip inside out under a scroll position
+  // that hasn't moved, so the current page has to be chased back to the top.
+  // Without this the observer would report whatever page happened to land in
+  // the middle and the reader would lose their place.
+  const wasRtl = useRef(rtl);
+  useEffect(() => {
+    if (wasRtl.current === rtl) return;
+    wasRtl.current = rtl;
+    const slot = slotsRef.current.get(index);
+    if (!slot) return;
+    slot.scrollIntoView({ block: "start", behavior: "auto" });
+    observed.current = index;
+  }, [rtl, index]);
+
+  // Reversed in the DOM rather than with `flex-col-reverse`, so the reading
+  // order a screen reader hears matches the one on screen.
+  const ordered = rtl ? [...pages].reverse() : pages;
+
   // A tap that isn't a scroll toggles the chrome, matching the paged viewport.
   const touch = useRef<{ x: number; y: number; at: number } | null>(null);
 
@@ -156,7 +177,7 @@ export function PageScroller({
         className="mx-auto flex flex-col"
         style={{ width: `${strip * 100}%`, gap: GAP }}
       >
-        {pages.map((page) => (
+        {ordered.map((page) => (
           <div
             key={page.index}
             ref={(node) => registerSlot(page.index, node)}

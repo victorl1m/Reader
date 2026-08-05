@@ -2,15 +2,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const DAY = 24 * 60 * 60 * 1000;
 
+const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)";
+
 /** Fresh module instance with a stubbed browser environment. */
 async function load({
   stored,
+  installed,
   ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
   maxTouchPoints = 0,
   displayMode = "browser",
   iosStandalone,
 }: {
   stored?: string | null;
+  /** Seeds the remembered install, as a previous visit would have. */
+  installed?: boolean;
   ua?: string;
   maxTouchPoints?: number;
   displayMode?: string;
@@ -20,6 +25,7 @@ async function load({
 
   const store = new Map<string, string>();
   if (stored != null) store.set("flowless:install-dismissed:v1", stored);
+  if (installed) store.set("flowless:installed:v1", "1");
 
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => store.get(key) ?? null,
@@ -27,20 +33,39 @@ async function load({
     removeItem: (key: string) => void store.delete(key),
   });
 
+  // Captured so tests can fire the events the browser would.
+  const listeners = new Map<string, Array<(event: unknown) => void>>();
+  const addEventListener = (type: string, listener: (event: unknown) => void) => {
+    const existing = listeners.get(type);
+    if (existing) existing.push(listener);
+    else listeners.set(type, [listener]);
+  };
+  const fire = (type: string, event: unknown = {}) => {
+    for (const listener of listeners.get(type) ?? []) listener(event);
+  };
+
+  // Mutable: launching the installed app changes it without a reload.
+  let mode = displayMode;
+  const setDisplayMode = (next: string) => {
+    mode = next;
+    fire("display-mode-change");
+  };
+
   const navigatorStub = { userAgent: ua, maxTouchPoints, standalone: iosStandalone };
   vi.stubGlobal("navigator", navigatorStub);
   vi.stubGlobal("window", {
     navigator: navigatorStub,
     matchMedia: (query: string) => ({
-      matches: query.includes(`display-mode: ${displayMode}`),
-      addEventListener: () => {},
+      matches: query.includes(`display-mode: ${mode}`),
+      addEventListener: (_: string, listener: (event: unknown) => void) =>
+        addEventListener("display-mode-change", listener),
       removeEventListener: () => {},
     }),
-    addEventListener: () => {},
+    addEventListener,
     removeEventListener: () => {},
   });
 
-  return { install: await import("./install"), store };
+  return { install: await import("./install"), store, fire, setDisplayMode };
 }
 
 afterEach(() => {
@@ -192,6 +217,50 @@ describe("snapshot", () => {
     unsubscribe();
     module.dismissInstall();
     expect(seen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("remembered install", () => {
+  it("reports installed in a plain tab once the app is known", async () => {
+    const { install: module } = await load({ ua: IPHONE, installed: true });
+    // Without the memory this iPhone tab would be offered the steps again.
+    expect(module.getInstallSnapshot().status).toBe("installed");
+  });
+
+  it("records the install after running as the app", async () => {
+    const { install: module, store } = await load({ displayMode: "standalone" });
+    expect(module.getInstallSnapshot().status).toBe("installed");
+    expect(store.get("flowless:installed:v1")).toBe("1");
+  });
+
+  it("records it when the browser reports the install", async () => {
+    const { install: module, store, fire } = await load();
+    expect(module.getInstallSnapshot().status).toBe("unsupported");
+    fire("appinstalled");
+    expect(module.getInstallSnapshot().status).toBe("installed");
+    expect(store.get("flowless:installed:v1")).toBe("1");
+  });
+
+  it("forgets it when the browser offers to install again", async () => {
+    const { install: module, store, fire } = await load({ installed: true });
+    expect(module.getInstallSnapshot().status).toBe("installed");
+    // Chromium withholds this while installed, so it means it was uninstalled.
+    fire("beforeinstallprompt", { preventDefault: () => {} });
+    expect(module.getInstallSnapshot().status).toBe("installable");
+    expect(store.has("flowless:installed:v1")).toBe(false);
+  });
+
+  it("records it when the display mode changes mid-session", async () => {
+    const { install: module, store, setDisplayMode } = await load({ ua: IPHONE });
+    expect(module.getInstallSnapshot().status).toBe("manual");
+    setDisplayMode("standalone");
+    expect(module.getInstallSnapshot().status).toBe("installed");
+    expect(store.get("flowless:installed:v1")).toBe("1");
+  });
+
+  it("wasInstalled is false with nothing recorded", async () => {
+    const { install: module } = await load();
+    expect(module.wasInstalled()).toBe(false);
   });
 });
 

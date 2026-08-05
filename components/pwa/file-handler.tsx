@@ -31,8 +31,8 @@ export function FileHandler() {
         open(file);
         router.push("/read");
       } catch {
-        // Permission can be revoked between launch and read; the user still
-        // lands on the reader's empty state and can pick the file manually.
+        // Permission can be revoked between launch and read; the reader with
+        // nothing open sends the user home, where the picker is.
       }
     });
   }, [open, router]);

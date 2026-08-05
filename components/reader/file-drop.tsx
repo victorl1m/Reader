@@ -118,10 +118,12 @@ export function FileDrop() {
         </span>
         <span className="flex flex-col gap-1.5">
           <span className="text-lg font-medium text-foreground">
-            {dragging ? "Solte em qualquer lugar" : "Solte um quadrinho, ou clique para procurar"}
+            {dragging
+              ? "Pode soltar em qualquer lugar da tela"
+              : "Solte um quadrinho aqui, ou clique para procurar"}
           </span>
           <span className="text-sm text-muted">
-            .cbr e .cbz, abertos no seu dispositivo e nunca enviados
+            .cbr e .cbz, abertos no seu aparelho e nunca enviados
           </span>
         </span>
       </button>

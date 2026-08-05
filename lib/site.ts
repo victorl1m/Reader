@@ -18,10 +18,16 @@ function resolveSiteUrl(): string {
 export const SITE_URL = resolveSiteUrl();
 
 export const SITE = {
+  /**
+   * The app's name. Also the manifest `name`, which the OS prefixes to the
+   * document title in window and taskbar chrome — so it stays a name, not a
+   * description. `title` is for the document and search results, where the
+   * extra words earn their place.
+   */
   name: "Flowless Reader",
   /** Home screen and app-switcher label. */
   shortName: "Flowless Reader",
   title: "Flowless Reader: Mangá e Quadrinhos",
   description:
-    "Abra um .cbr ou .cbz e comece a ler na hora. As páginas aparecem conforme são lidas, e nada sai do seu dispositivo.",
+    "Leia mangás e quadrinhos no navegador. Abra um .cbr ou .cbz e comece na hora: quem abre o arquivo é o seu próprio aparelho, e nenhuma página é enviada para lugar nenhum.",
 } as const;

@@ -241,7 +241,7 @@ function libraryScene(w: number, h: number, narrow: boolean) {
             textAlign: "center",
           }}
         >
-          Seus quadrinhos, página um num segundo
+          Seus quadrinhos abrem na hora, aqui no navegador
         </div>
         <div
           style={{
@@ -252,8 +252,8 @@ function libraryScene(w: number, h: number, narrow: boolean) {
             lineHeight: 1.45,
           }}
         >
-          Abra um .cbr ou .cbz e as páginas começam a chegar conforme são
-          lidas. Nada é enviado, tudo fica no seu dispositivo.
+          Arraste um .cbr ou .cbz e a leitura já começa na primeira página.
+          Nada é enviado: tudo acontece no seu aparelho.
         </div>
       </div>
 
