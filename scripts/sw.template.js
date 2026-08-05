@@ -31,7 +31,9 @@ self.addEventListener("install", (event) => {
           cache.add(new Request(url, { cache: "reload" })).catch(() => {}),
         ),
       );
-      await self.skipWaiting();
+      // Deliberately no `skipWaiting()` here. An update waits until the reader
+      // accepts it, so a new deploy can never swap itself in underneath someone
+      // who is part-way through a comic.
     })(),
   );
 });

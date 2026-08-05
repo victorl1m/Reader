@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Registers the offline service worker and surfaces updates.
@@ -11,6 +11,12 @@ import { useCallback, useEffect, useState } from "react";
  */
 export function ServiceWorker() {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
+  /**
+   * Only a reload the reader asked for is allowed. A worker also takes control
+   * on its very first activation, and reloading on that would throw away a
+   * comic the reader had already opened.
+   */
+  const acceptedUpdate = useRef(false);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") return;
@@ -42,10 +48,9 @@ export function ServiceWorker() {
       }
     };
 
-    // A new worker taking control means the reload we asked for is ready.
     let reloading = false;
     const onControllerChange = () => {
-      if (reloading) return;
+      if (!acceptedUpdate.current || reloading) return;
       reloading = true;
       window.location.reload();
     };
@@ -68,6 +73,7 @@ export function ServiceWorker() {
   }, []);
 
   const update = useCallback(() => {
+    acceptedUpdate.current = true;
     waiting?.postMessage("skip-waiting");
     setWaiting(null);
   }, [waiting]);

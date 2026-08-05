@@ -35,7 +35,7 @@ export function InstallPrompt() {
 
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p id="install-prompt-title" className="text-sm font-medium text-foreground">
-              Instale o Flowless
+              Instale o Flowless Reader
             </p>
             <p className="text-sm leading-relaxed text-muted">
               Abre em tela cheia, funciona offline e fica na sua tela de início.

@@ -19,7 +19,8 @@ export const SITE_URL = resolveSiteUrl();
 
 export const SITE = {
   name: "Flowless Reader",
-  shortName: "Flowless",
+  /** Home screen and app-switcher label. */
+  shortName: "Flowless Reader",
   title: "Flowless Reader: Mangá e Quadrinhos",
   description:
     "Abra um .cbr ou .cbz e comece a ler na hora. As páginas aparecem conforme são lidas, e nada sai do seu dispositivo.",
