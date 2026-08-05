@@ -5,18 +5,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * Registers the offline service worker and offers updates.
  *
- * The worker activates as soon as it installs, so a broken build can always be
- * replaced. Reloading, however, is never automatic: a reader part-way through a
- * comic holds it only in memory, and a surprise reload would throw it away.
+ * Detecting an update is fiddlier than it looks. The worker calls
+ * `skipWaiting()`, so a new build can go from `installing` to `activated`
+ * before this component even mounts — by which point there is no `waiting`
+ * worker left to notice and `updatefound` has already fired. Three signals are
+ * watched so the prompt can't be missed:
+ *
+ * - a worker already `installing` or `waiting` when we register,
+ * - `updatefound` for one that arrives later,
+ * - `controllerchange`, which means a new worker took over regardless.
+ *
+ * Reloading is never automatic: a reader part-way through a comic holds it only
+ * in memory, and a surprise reload would throw it away.
  */
 export function ServiceWorker() {
   const [updateReady, setUpdateReady] = useState(false);
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
-  /**
-   * Only a reload the reader asked for is allowed. A worker also takes control
-   * on its very first activation, and reloading on that would discard a comic
-   * that was already open.
-   */
+  /** Set only by the button, so an automatic takeover can't reload the page. */
   const acceptedUpdate = useRef(false);
 
   useEffect(() => {
@@ -24,6 +29,49 @@ export function ServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
 
     let disposed = false;
+    let reloading = false;
+    /**
+     * A first install also fires `controllerchange` when the worker claims the
+     * page. That is not an update, so the initial state is remembered.
+     */
+    let hadController = Boolean(navigator.serviceWorker.controller);
+
+    /** Flags a worker as an update once it reaches a usable state. */
+    const watch = (worker: ServiceWorker | null) => {
+      if (!worker) return;
+      const check = () => {
+        if (disposed) return;
+        // On a very first install there is no previous version to replace.
+        if (!navigator.serviceWorker.controller) return;
+        if (worker.state === "installed" || worker.state === "activated") {
+          setUpdateReady(true);
+        }
+      };
+      check();
+      worker.addEventListener("statechange", check);
+    };
+
+    const onControllerChange = () => {
+      if (acceptedUpdate.current) {
+        if (!reloading) {
+          reloading = true;
+          window.location.reload();
+        }
+        return;
+      }
+      if (!hadController) {
+        // The initial claim on a first install.
+        hadController = true;
+        return;
+      }
+      // A new worker took over on its own; the page's code is now stale.
+      setUpdateReady(true);
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void registrationRef.current?.update().catch(() => {});
+    };
 
     const register = async () => {
       try {
@@ -33,43 +81,21 @@ export function ServiceWorker() {
         if (disposed) return;
         registrationRef.current = registration;
 
-        // A worker already parked here from a previous visit.
-        if (registration.waiting && navigator.serviceWorker.controller) {
-          setUpdateReady(true);
-        }
+        // An update already in flight before this component mounted.
+        watch(registration.installing);
+        watch(registration.waiting);
 
         registration.addEventListener("updatefound", () => {
-          const installing = registration.installing;
-          if (!installing) return;
-          installing.addEventListener("statechange", () => {
-            // Only an update: on a first install there is no controller yet.
-            if (!navigator.serviceWorker.controller) return;
-            if (installing.state === "installed" || installing.state === "activated") {
-              setUpdateReady(true);
-            }
-          });
+          watch(registration.installing);
         });
-
-        // Catch a build deployed while the tab was left open.
-        const onVisible = () => {
-          if (document.visibilityState === "visible") {
-            void registration.update().catch(() => {});
-          }
-        };
-        document.addEventListener("visibilitychange", onVisible);
-        return () => document.removeEventListener("visibilitychange", onVisible);
       } catch {
         // An unavailable service worker only costs offline support.
       }
     };
 
-    let reloading = false;
-    const onControllerChange = () => {
-      if (!acceptedUpdate.current || reloading) return;
-      reloading = true;
-      window.location.reload();
-    };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    // Catches a build deployed while the tab sat in the background.
+    document.addEventListener("visibilitychange", onVisible);
 
     if (document.readyState === "complete") {
       void register();
@@ -80,6 +106,7 @@ export function ServiceWorker() {
     return () => {
       disposed = true;
       window.removeEventListener("load", register);
+      document.removeEventListener("visibilitychange", onVisible);
       navigator.serviceWorker.removeEventListener(
         "controllerchange",
         onControllerChange,
@@ -91,11 +118,11 @@ export function ServiceWorker() {
     acceptedUpdate.current = true;
     const waiting = registrationRef.current?.waiting;
     if (waiting) {
+      // `controllerchange` reloads once the new worker takes over.
       waiting.postMessage("skip-waiting");
-      // `controllerchange` triggers the reload once the new worker takes over.
       return;
     }
-    // Already activated; a plain reload picks it up.
+    // It already activated on its own; a plain reload picks up the new code.
     window.location.reload();
   }, []);
 
