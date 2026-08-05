@@ -118,6 +118,15 @@ export function PageViewport({
       : Math.min(0, Math.max(stage.h - renderedH, pan.y));
 
   const zoomed = zoom > 1.01;
+  /**
+   * Whether a sideways drag has somewhere to go.
+   *
+   * This, not the zoom multiplier, decides what a horizontal gesture means. A
+   * page can overflow the viewport without the reader having pinched at all
+   * (actual size, or a wide spread), and in that state a swipe must pan the
+   * page rather than skip past the part they were trying to reach.
+   */
+  const canPanX = renderedW > stage.w + 1;
 
   const localPoint = useCallback((clientX: number, clientY: number): Point => {
     const rect = stageRef.current?.getBoundingClientRect();
@@ -234,10 +243,10 @@ export function PageViewport({
     const dx = event.clientX - state.start.x;
     const dy = event.clientY - state.start.y;
 
-    // A flick turns the page, but only when there is nothing to pan.
+    // A flick turns the page, but only when there is nothing to pan sideways.
     if (state.moved) {
       if (
-        !zoomed &&
+        !canPanX &&
         Math.abs(dx) > SWIPE_DISTANCE &&
         Math.abs(dx) > Math.abs(dy) * 1.2
       ) {
@@ -322,6 +331,9 @@ export function PageViewport({
           transform: `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`,
           transformOrigin: "0 0",
           willChange: "transform",
+          // Until the stage has been measured there is no fitted scale to use,
+          // and drawing at natural size would flash a hugely magnified page.
+          visibility: stage.w && stage.h ? "visible" : "hidden",
         }}
       >
         {pages.map((page, position) =>
@@ -343,10 +355,12 @@ export function PageViewport({
         )}
       </div>
 
-      {/* Tap zones for page turning. Disabled while zoomed so a tap can't yank
-          the page away from someone reading a panel. */}
+      {/* Tap zones for page turning, switched off whenever the page is zoomed
+          or wider than the viewport. In that state the sides belong to
+          panning, and a tap there would yank the page away from someone
+          reading a panel. */}
       <div
-        className={`absolute inset-0 flex ${zoomed ? "pointer-events-none" : ""}`}
+        className={`absolute inset-0 flex ${zoomed || canPanX ? "pointer-events-none" : ""}`}
         aria-hidden
       >
         <button

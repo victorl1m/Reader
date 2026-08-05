@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useComic } from "@/lib/comic/store";
+import { useComic, type FitMode } from "@/lib/comic/store";
 import { FileDrop } from "./file-drop";
 import { PageRail } from "./page-rail";
 import { PageViewport } from "./page-viewport";
@@ -10,21 +10,30 @@ import { ReaderToolbar } from "./reader-toolbar";
 import { Logo } from "@/components/brand/logo";
 
 /**
- * Below this width a two-page spread puts each page at postage-stamp size, so
- * the mode is hidden rather than offered and ignored.
+ * Below this width two things stop making sense:
+ *
+ * - A two-page spread puts each page at postage-stamp size.
+ * - "Tamanho real" renders every page at 1:1 pixels, so each page turn lands
+ *   on a hugely magnified page. Pinch-zoom covers that need properly now, and
+ *   unlike a persistent fit mode it doesn't survive the page turn.
+ *
+ * Both are hidden rather than offered and then fought with.
  */
-const SPREAD_MIN_WIDTH = 720;
+const WIDE_MIN_WIDTH = 720;
 
-function useCanSpread() {
-  const [canSpread, setCanSpread] = useState(true);
+const WIDE_FITS: FitMode[] = ["height", "width", "original"];
+const NARROW_FITS: FitMode[] = ["height", "width"];
+
+function useIsWide() {
+  const [isWide, setIsWide] = useState(true);
   useEffect(() => {
-    const query = window.matchMedia(`(min-width: ${SPREAD_MIN_WIDTH}px)`);
-    const update = () => setCanSpread(query.matches);
+    const query = window.matchMedia(`(min-width: ${WIDE_MIN_WIDTH}px)`);
+    const update = () => setIsWide(query.matches);
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
-  return canSpread;
+  return isWide;
 }
 
 export function Reader() {
@@ -52,9 +61,14 @@ export function Reader() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
 
-  const canSpread = useCanSpread();
+  const isWide = useIsWide();
   const reading = status === "ready";
-  const spreadActive = spread && canSpread;
+  const spreadActive = spread && isWide;
+
+  // A stored preference can name a mode this screen no longer offers, so the
+  // view falls back rather than rendering something unusable.
+  const fitOrder = isWide ? WIDE_FITS : NARROW_FITS;
+  const effectiveFit = fitOrder.includes(fit) ? fit : "height";
 
   // Lock document scrolling while the reader owns the viewport.
   useEffect(() => {
@@ -164,7 +178,7 @@ export function Reader() {
           toggleFullscreen();
           break;
         case "s":
-          if (canSpread) setSpread(!spread);
+          if (isWide) setSpread(!spread);
           break;
         case "d":
           setRtl(!rtl);
@@ -184,7 +198,7 @@ export function Reader() {
     reading,
     rtl,
     spread,
-    canSpread,
+    isWide,
     total,
     goLeft,
     goRight,
@@ -267,7 +281,8 @@ export function Reader() {
           index={index}
           total={total}
           thumbsReady={thumbsReady}
-          fit={fit}
+          fit={effectiveFit}
+          fitOrder={fitOrder}
           setFit={setFit}
           rtl={rtl}
           setRtl={setRtl}
@@ -277,13 +292,13 @@ export function Reader() {
           setRailOpen={setRailOpen}
           onFullscreen={toggleFullscreen}
           isFullscreen={isFullscreen}
-          canSpread={canSpread}
+          canSpread={isWide}
         />
       ) : null}
 
       <PageViewport
         pages={ordered.map((pageIndex) => pages[pageIndex])}
-        fit={fit}
+        fit={effectiveFit}
         currentIndex={index}
         onSwipeLeft={goRight}
         onSwipeRight={goLeft}

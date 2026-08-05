@@ -22,7 +22,10 @@ const FEATURES = [
 export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between px-6 py-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-10">
+      <header
+        data-app-bar
+        className="flex items-center justify-between px-6 py-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-10"
+      >
         <Logo size={34} />
         <InstallButton />
       </header>

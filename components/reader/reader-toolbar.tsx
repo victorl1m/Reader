@@ -10,8 +10,6 @@ const FIT_LABELS: Record<FitMode, string> = {
   original: "Tamanho real",
 };
 
-const FIT_ORDER: FitMode[] = ["height", "width", "original"];
-
 function Icon({ path, filled }: { path: string; filled?: boolean }) {
   return (
     <svg
@@ -82,6 +80,7 @@ export function ReaderToolbar({
   total,
   thumbsReady,
   fit,
+  fitOrder,
   setFit,
   rtl,
   setRtl,
@@ -98,6 +97,8 @@ export function ReaderToolbar({
   total: number;
   thumbsReady: number;
   fit: FitMode;
+  /** Modes this screen offers, in cycle order. */
+  fitOrder: FitMode[];
   setFit: (fit: FitMode) => void;
   rtl: boolean;
   setRtl: (rtl: boolean) => void;
@@ -110,13 +111,16 @@ export function ReaderToolbar({
   /** False in portrait, where two pages side by side are unreadable. */
   canSpread: boolean;
 }) {
-  const nextFit = FIT_ORDER[(FIT_ORDER.indexOf(fit) + 1) % FIT_ORDER.length];
+  const nextFit = fitOrder[(fitOrder.indexOf(fit) + 1) % fitOrder.length];
   const preparing = total > 0 && thumbsReady < total;
   const fitIcon =
     fit === "height" ? ICONS.fitPage : fit === "width" ? ICONS.fitWidth : ICONS.actual;
 
   return (
-    <header className="relative flex shrink-0 items-center gap-1 border-b border-border-subtle bg-surface px-1 py-1 pt-[max(0.25rem,env(safe-area-inset-top))] sm:px-2">
+    <header
+      data-app-bar
+      className="relative flex shrink-0 items-center gap-1 border-b border-border-subtle bg-surface px-1 py-1 pt-[max(0.25rem,env(safe-area-inset-top))] sm:px-2"
+    >
       <Link
         href="/"
         className="flex h-11 shrink-0 items-center gap-2 rounded-lg px-2 text-foreground transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"

@@ -62,6 +62,19 @@ body[data-reading="true"] {
   color: #0b0b0f;
 }
 
+/*
+ * Installed, the app draws under the system status bar, which is painted with
+ * the manifest `theme_color` (--background). A top bar on --surface sits one
+ * step lighter than that, leaving a visible seam across the top of the screen.
+ * In standalone the bar drops to the same colour so the two read as one.
+ */
+@media (display-mode: standalone), (display-mode: fullscreen),
+  (display-mode: minimal-ui), (display-mode: window-controls-overlay) {
+  [data-app-bar] {
+    background: var(--background);
+  }
+}
+
 /* Thin, unobtrusive scrollbars for the page rail and vertical reading mode. */
 .scrollbar-slim {
   scrollbar-width: thin;
