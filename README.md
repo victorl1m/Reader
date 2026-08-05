@@ -23,6 +23,13 @@ cache names. Both files are generated and git-ignored.
 Set `NEXT_PUBLIC_SITE_URL` for correct canonical and Open Graph URLs; without
 it the app falls back to the deployment URL, then to the production default.
 
+> Run a production build on `localhost` once and its service worker keeps
+> controlling the origin, answering `next dev` with that build's chunks
+> cache-first. The symptom is an error in a file you have already fixed, on a
+> fresh server, because the stale chunk is mapped onto the new source.
+> `components/pwa/service-worker.tsx` now unregisters it in development, so a
+> single reload clears it.
+
 ## How it works
 
 Opening a comic never touches the network.
@@ -62,12 +69,20 @@ of the whole book.
 
 ### Reading
 
+There are two modes. **Paged** (`components/reader/page-viewport.tsx`) turns one
+page at a time in a pan-and-zoom viewport; **scroll**
+(`components/reader/page-scroller.tsx`) joins the whole book into one vertical
+strip and leans on native scrolling, because momentum, scroll anchoring and the
+scrollbar are all things the browser does better than a hand-rolled transform.
+
 | Input | Action |
 | --- | --- |
 | `←` `→` | Turn the page (follows right-to-left mode) |
-| `↑` `↓` `space` | Previous / next page |
+| `↑` `↓` `space` | Previous / next page; a screenful in scroll mode |
 | `Home` `End` | First / last page |
-| `s` | Single page or two-page spread |
+| `v` | Paged or continuous scroll |
+| `w` | Strip width in scroll mode (100 / 80 / 62%) |
+| `s` | Single page or two-page spread (paged mode) |
 | `d` | Toggle right-to-left (manga) order |
 | `t` | Toggle the thumbnail rail |
 | `f` | Fullscreen |
@@ -78,12 +93,31 @@ of the whole book.
 | `Ctrl`/`⌘` + wheel | Zoom; a plain wheel pans |
 | Tap centre | Hide the chrome for full-bleed reading |
 
-`components/reader/page-viewport.tsx` owns every gesture and derives its
-transform from a zoom multiplier plus a pan offset, so a page that finishes
-decoding, a rotated phone or a changed fit mode all re-fit on their own.
+The paged viewport owns every gesture and derives its transform from a zoom
+multiplier plus a pan offset, so a page that finishes decoding, a rotated phone
+or a changed mode all re-fit on their own. The scroller inverts the relationship:
+the current page is *derived* from the scroll position, so the counter, the rail
+and the saved position follow the reader's eye, while jumps from outside (the
+rail, a keypress) scroll the strip instead.
 
-View preferences and the last page read are persisted, the latter capped at 100
-archives and pruned least-recently-read first.
+Both modes reserve each page's box from the aspect ratio reported by the
+thumbnail pass, which runs far ahead of full-size decoding, so a page arriving
+never shoves the layout around.
+
+### What is remembered
+
+Nothing leaves the device and no archive is ever written anywhere. Two things are
+kept in `localStorage`:
+
+- **Every setting** (`lib/comic/prefs.ts`): mode, reading direction, spread,
+  rail, chrome, strip width. A setting that resets on the next open is a setting
+  the reader has to apply again every session.
+- **The last page read** (`lib/comic/library.ts`), keyed by file *name* alone.
+  The same issue re-downloaded or moved has a different size and timestamp while
+  still being the same read, so keying on those loses the position for no
+  benefit. Capped at 100 archives, pruned least-recently-read first. The most
+  recent one backs the "continue reading" card on the landing page, which asks
+  for the file again and lands on the page it left off.
 
 ## Security
 
@@ -125,9 +159,9 @@ reading" shortcut because a comic lives in memory for the session only.
 ```
 app/                  routes, metadata, manifest, generated imagery
 components/brand/     logo and wordmark
-components/reader/    drop target, reader shell, pan/zoom viewport, rail, toolbar
+components/reader/    drop target, reader shell, viewport, scroller, rail, toolbar
 components/pwa/       service worker, install button, OS file handler
-lib/comic/            decoder worker, entry sorting, client store, prefs
+lib/comic/            decoder worker, entry sorting, client store, prefs, positions
 lib/og/               shared artwork for ImageResponse routes
 scripts/              build-time asset generation
 ```
