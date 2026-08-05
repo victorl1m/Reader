@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useComic, type FitMode } from "@/lib/comic/store";
+import { useComic } from "@/lib/comic/store";
 import { FileDrop } from "./file-drop";
 import { PageRail } from "./page-rail";
 import { PageViewport } from "./page-viewport";
@@ -10,19 +10,10 @@ import { ReaderToolbar } from "./reader-toolbar";
 import { Logo } from "@/components/brand/logo";
 
 /**
- * Below this width two things stop making sense:
- *
- * - A two-page spread puts each page at postage-stamp size.
- * - "Tamanho real" renders every page at 1:1 pixels, so each page turn lands
- *   on a hugely magnified page. Pinch-zoom covers that need properly now, and
- *   unlike a persistent fit mode it doesn't survive the page turn.
- *
- * Both are hidden rather than offered and then fought with.
+ * Below this width a two-page spread puts each page at postage-stamp size, so
+ * the mode is hidden rather than offered and then fought with.
  */
 const WIDE_MIN_WIDTH = 720;
-
-const WIDE_FITS: FitMode[] = ["height", "width", "original"];
-const NARROW_FITS: FitMode[] = ["height", "width"];
 
 function useIsWide() {
   const [isWide, setIsWide] = useState(true);
@@ -48,8 +39,6 @@ export function Reader() {
     goTo,
     next,
     previous,
-    fit,
-    setFit,
     rtl,
     setRtl,
     spread,
@@ -65,10 +54,6 @@ export function Reader() {
   const reading = status === "ready";
   const spreadActive = spread && isWide;
 
-  // A stored preference can name a mode this screen no longer offers, so the
-  // view falls back rather than rendering something unusable.
-  const fitOrder = isWide ? WIDE_FITS : NARROW_FITS;
-  const effectiveFit = fitOrder.includes(fit) ? fit : "height";
 
   // Lock document scrolling while the reader owns the viewport.
   useEffect(() => {
@@ -281,9 +266,6 @@ export function Reader() {
           index={index}
           total={total}
           thumbsReady={thumbsReady}
-          fit={effectiveFit}
-          fitOrder={fitOrder}
-          setFit={setFit}
           rtl={rtl}
           setRtl={setRtl}
           spread={spread}
@@ -298,7 +280,6 @@ export function Reader() {
 
       <PageViewport
         pages={ordered.map((pageIndex) => pages[pageIndex])}
-        fit={effectiveFit}
         currentIndex={index}
         onSwipeLeft={goRight}
         onSwipeRight={goLeft}

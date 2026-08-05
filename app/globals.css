@@ -9,6 +9,8 @@
   --background: #09090b;
   --surface: #121216;
   --surface-raised: #1b1b21;
+  /* Backdrop behind the page itself. */
+  --stage: #0b0b0e;
   --border: #27272d;
   --foreground: #fafafa;
   --muted: #a1a1aa;
@@ -18,6 +20,7 @@
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-stage: var(--stage);
   --color-border-subtle: var(--border);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
@@ -73,6 +76,23 @@ body[data-reading="true"] {
   [data-app-bar] {
     background: var(--background);
   }
+}
+
+/*
+ * Fullscreen drops to true black.
+ *
+ * This is where a comic gets read in the dark, and on an OLED panel black
+ * pixels are simply off: the frame around the page disappears instead of
+ * glowing grey next to it, and it costs less battery. Redefining the tokens
+ * rather than restyling each element means the bar, the stage and the rail all
+ * follow together.
+ */
+[data-fullscreen="true"] {
+  --background: #000;
+  --surface: #000;
+  --surface-raised: #0b0b0d;
+  --stage: #000;
+  --border: #1b1b1f;
 }
 
 /* Thin, unobtrusive scrollbars for the page rail and vertical reading mode. */

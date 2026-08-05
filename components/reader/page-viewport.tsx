@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FitMode } from "@/lib/comic/store";
 import type { Page } from "@/lib/comic/types";
 
 /**
@@ -35,7 +34,6 @@ const spanBetween = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 export function PageViewport({
   pages,
-  fit,
   currentIndex,
   onSwipeLeft,
   onSwipeRight,
@@ -45,7 +43,6 @@ export function PageViewport({
 }: {
   /** Pages to lay out side by side, already in visual order. */
   pages: (Page | undefined)[];
-  fit: FitMode;
   /** Re-fits the view whenever the reader moves to a different page. */
   currentIndex: number;
   onSwipeLeft: () => void;
@@ -62,10 +59,10 @@ export function PageViewport({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
 
-  // Re-fit when the page or fit mode changes. Adjusting state during render is
-  // React's supported way to reset on a prop change — an effect would render
-  // the old view for a frame first.
-  const resetKey = `${currentIndex}:${fit}`;
+  // Re-fit on every page turn. Adjusting state during render is React's
+  // supported way to reset on a prop change; an effect would render the old
+  // view for a frame first.
+  const resetKey = String(currentIndex);
   const [lastKey, setLastKey] = useState(resetKey);
   if (lastKey !== resetKey) {
     setLastKey(resetKey);
@@ -93,14 +90,13 @@ export function PageViewport({
     sizes.reduce((sum, size) => sum + size.w, 0) + GAP * Math.max(0, sizes.length - 1);
   const contentH = sizes.reduce((max, size) => Math.max(max, size.h), 0);
 
+  // Always "contain". There is no fit mode to pick any more: pinch-zoom does
+  // the job better, and unlike a mode it resets on every page turn instead of
+  // following the reader through the book.
   const baseScale =
     !stage.w || !stage.h || !contentW || !contentH
       ? 1
-      : fit === "width"
-        ? stage.w / contentW
-        : fit === "original"
-          ? 1
-          : Math.min(stage.w / contentW, stage.h / contentH);
+      : Math.min(stage.w / contentW, stage.h / contentH);
 
   const scale = baseScale * zoom;
   const renderedW = contentW * scale;
