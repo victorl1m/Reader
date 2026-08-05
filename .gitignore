@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated build assets (see scripts/)
+/public/sw.js
+/public/unrar.wasm
+
+# comic archives are the user's own files and are never part of the repo
+*.cbr
+*.cbz
