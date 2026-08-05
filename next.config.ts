@@ -57,6 +57,20 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
       {
+        // Documents must always be revalidated.
+        //
+        // Next serves prerendered HTML with `s-maxage` only, which leaves a
+        // browser cache free to reuse it heuristically. A stored HTML response
+        // replays its stored *headers* too, so a page cached under an old
+        // security policy keeps enforcing that policy long after the server
+        // stopped sending it. Revalidation is a 304 in the common case.
+        source: "/:path*",
+        has: [{ type: "header", key: "accept", value: ".*text/html.*" }],
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+        ],
+      },
+      {
         // The decoder wasm is content-stable for a given dependency version and
         // is re-synced on every build.
         source: "/unrar.wasm",

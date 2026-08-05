@@ -87,15 +87,17 @@ archives and pruned least-recently-read first.
 
 ## Security
 
-`next.config.ts` sets CSP, HSTS, `nosniff`, `frame-ancestors 'none'`, a
+`next.config.ts` sets HSTS, `nosniff`, `X-Frame-Options: DENY`, a
 `Permissions-Policy` and cross-origin isolation headers, and disables
 `X-Powered-By`.
 
-`'unsafe-eval'` is granted **only** to `/_next/static/chunks/*`, because
-node-unrar-js is an Emscripten build whose embind runtime calls `new Function`.
-A dedicated worker takes its policy from its own response headers, and the
-header is ignored on scripts loaded normally as subresources, so the page itself
-never gets that privilege.
+There is **no Content-Security-Policy**, deliberately. node-unrar-js is an
+Emscripten build whose embind runtime calls `new Function(...)` while
+registering its bindings, so the decoder needs `'unsafe-eval'` to start at all.
+Granting that to the worker alone doesn't hold up: Chrome on Android inherits
+the document policy into dedicated workers, so any policy strict enough to be
+worth shipping also stops the reader from opening a `.cbr`. Adding a CSP back
+requires a decoder that isn't built with embind.
 
 `lib/comic/types.ts` holds the input limits: maximum archive size, entry count,
 per-page size, and total declared uncompressed size (a zip-bomb guard).

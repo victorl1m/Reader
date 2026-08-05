@@ -31,9 +31,15 @@ self.addEventListener("install", (event) => {
           cache.add(new Request(url, { cache: "reload" })).catch(() => {}),
         ),
       );
-      // Deliberately no `skipWaiting()` here. An update waits until the reader
-      // accepts it, so a new deploy can never swap itself in underneath someone
-      // who is part-way through a comic.
+      // Activate immediately rather than waiting for every tab to close.
+      //
+      // A waiting worker keeps serving its own caches, which means a bad build
+      // can pin itself on a device indefinitely — including replaying stale
+      // response headers from cached documents. Taking over at once is what
+      // makes the app recoverable. The page never reloads on its own, so this
+      // can't yank a comic away mid-read; assets are content-hashed, so mixing
+      // old and new within a session is safe.
+      await self.skipWaiting();
     })(),
   );
 });

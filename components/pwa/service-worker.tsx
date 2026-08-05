@@ -3,18 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Registers the offline service worker and surfaces updates.
+ * Registers the offline service worker and offers updates.
  *
- * A cache-first worker with no update path can pin users to an old build
- * indefinitely, so a new worker waiting to activate is offered as a reload
- * rather than left to a future tab close.
+ * The worker activates as soon as it installs, so a broken build can always be
+ * replaced. Reloading, however, is never automatic: a reader part-way through a
+ * comic holds it only in memory, and a surprise reload would throw it away.
  */
 export function ServiceWorker() {
-  const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   /**
    * Only a reload the reader asked for is allowed. A worker also takes control
-   * on its very first activation, and reloading on that would throw away a
-   * comic the reader had already opened.
+   * on its very first activation, and reloading on that would discard a comic
+   * that was already open.
    */
   const acceptedUpdate = useRef(false);
 
@@ -30,19 +31,33 @@ export function ServiceWorker() {
           scope: "/",
         });
         if (disposed) return;
+        registrationRef.current = registration;
 
-        if (registration.waiting) setWaiting(registration.waiting);
+        // A worker already parked here from a previous visit.
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          setUpdateReady(true);
+        }
 
         registration.addEventListener("updatefound", () => {
           const installing = registration.installing;
           if (!installing) return;
           installing.addEventListener("statechange", () => {
             // Only an update: on a first install there is no controller yet.
-            if (installing.state === "installed" && navigator.serviceWorker.controller) {
-              setWaiting(installing);
+            if (!navigator.serviceWorker.controller) return;
+            if (installing.state === "installed" || installing.state === "activated") {
+              setUpdateReady(true);
             }
           });
         });
+
+        // Catch a build deployed while the tab was left open.
+        const onVisible = () => {
+          if (document.visibilityState === "visible") {
+            void registration.update().catch(() => {});
+          }
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
       } catch {
         // An unavailable service worker only costs offline support.
       }
@@ -74,22 +89,30 @@ export function ServiceWorker() {
 
   const update = useCallback(() => {
     acceptedUpdate.current = true;
-    waiting?.postMessage("skip-waiting");
-    setWaiting(null);
-  }, [waiting]);
+    const waiting = registrationRef.current?.waiting;
+    if (waiting) {
+      waiting.postMessage("skip-waiting");
+      // `controllerchange` triggers the reload once the new worker takes over.
+      return;
+    }
+    // Already activated; a plain reload picks it up.
+    window.location.reload();
+  }, []);
 
-  if (!waiting) return null;
+  if (!updateReady) return null;
 
   return (
     <div
       role="status"
       className="fixed inset-x-0 bottom-0 z-50 flex flex-wrap items-center justify-center gap-3 border-t border-border-subtle bg-surface-raised px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-sm"
     >
-      <span className="text-foreground">Uma nova versão do Flowless está pronta.</span>
+      <span className="text-foreground">
+        Uma nova versão do Flowless Reader está pronta.
+      </span>
       <button
         type="button"
         onClick={update}
-        className="min-h-11 rounded-full bg-brand px-4 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="flex min-h-11 items-center rounded-full bg-brand px-4 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         Atualizar
       </button>
