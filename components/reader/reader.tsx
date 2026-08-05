@@ -259,7 +259,11 @@ export function Reader() {
   const ordered = rtl ? [...visible].reverse() : visible;
 
   return (
-    <div ref={shellRef} className="fixed inset-0 flex flex-col bg-background">
+    <div
+      ref={shellRef}
+      data-fullscreen={isFullscreen ? "true" : undefined}
+      className="fixed inset-0 flex flex-col bg-background"
+    >
       {chromeVisible ? (
         <ReaderToolbar
           fileName={fileName ?? ""}

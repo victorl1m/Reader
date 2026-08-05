@@ -313,7 +313,7 @@ export function PageViewport({
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
       onClickCapture={onClickCapture}
-      className="relative flex-1 overflow-hidden bg-[#0b0b0e]"
+      className="relative flex-1 overflow-hidden bg-stage"
       // The viewport owns every gesture, so the browser must not also try to
       // scroll or zoom underneath it.
       style={{ touchAction: "none", overscrollBehavior: "contain" }}
