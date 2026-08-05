@@ -5,8 +5,14 @@ import { useRouter } from "next/navigation";
 import { useComic } from "@/lib/comic/store";
 import { LIMITS } from "@/lib/comic/types";
 
-const ACCEPT =
-  ".cbr,.cbz,.rar,.zip,application/vnd.comicbook-rar,application/vnd.comicbook+zip";
+/**
+ * The file input deliberately carries no `accept` filter.
+ *
+ * Android's picker resolves `accept` entries to MIME types, and `.cbr` maps to
+ * nothing there, so real comics were shown greyed out and could not be picked
+ * at all. The worker identifies the container by magic bytes anyway, so
+ * filtering here only ever removed valid files and never added safety.
+ */
 
 /**
  * The entry point for a comic: a click-to-browse target that also accepts a
@@ -104,7 +110,6 @@ export function FileDrop() {
         ref={inputRef}
         id={inputId}
         type="file"
-        accept={ACCEPT}
         className="sr-only"
         aria-label="Escolher um arquivo de quadrinho"
         onChange={(event) => {
