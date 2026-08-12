@@ -81,6 +81,33 @@ export type Page = {
 export type ComicStatus = "idle" | "opening" | "ready" | "error";
 
 /**
+ * Where an open comic came from, when it isn't a file off the device.
+ *
+ * A local comic has no source: it is whatever the reader picked, and it can
+ * only be reopened by picking it again. A comic from an enabled integration
+ * can be, so a source carries the little it takes to fetch it a second time.
+ */
+export type RemoteSource = {
+  kind: "hqnow";
+  hqId: number;
+  chapterId: number;
+};
+
+/**
+ * A comic whose pages are already images on the web rather than entries in an
+ * archive. There is nothing to decode: the pages are URLs, handed to the same
+ * retention window that governs decoded ones so a long chapter can't pin every
+ * page in memory at once.
+ */
+export type RemoteComic = {
+  /** Display name, and the key the reading position is remembered under. */
+  name: string;
+  /** Page image URLs in reading order. */
+  pages: string[];
+  source: RemoteSource;
+};
+
+/**
  * Hard limits. Comic archives are opened from disk with no server in the loop,
  * so the only thing standing between a malicious or malformed file and a dead
  * tab is this file.

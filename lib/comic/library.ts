@@ -6,9 +6,13 @@
  * timestamp while still being the same read, and a key built from those loses
  * the position for no benefit. A name collision costs one wrong starting page.
  *
- * Only the name, the page and a timestamp are stored. The archive itself is
- * never written anywhere: it is read from disk by a worker and forgotten.
+ * Only the name, the page and a timestamp are stored — plus, for a comic that
+ * came from an integration rather than from disk, the ids needed to fetch it
+ * again. The archive itself is never written anywhere: it is read from disk by
+ * a worker and forgotten.
  */
+
+import type { RemoteSource } from "./types";
 
 export type Spot = {
   /** File name as the reader last picked it, kept for display. */
@@ -18,6 +22,11 @@ export type Spot = {
   total: number;
   /** Epoch millis of the last read, used for pruning and for "most recent". */
   at: number;
+  /**
+   * Absent for a local file, which can only be reopened by picking it again.
+   * Present when the comic came from an integration, which can fetch it back.
+   */
+  source?: RemoteSource;
 };
 
 const PREFIX = "flowless:spot:v1:";
@@ -29,16 +38,35 @@ const MAX_SPOTS = 100;
 /** Names differing only in case or surrounding space are the same book. */
 export const spotKey = (name: string) => `${PREFIX}${name.trim().toLowerCase()}`;
 
+/** A source only survives a round trip if it is still complete and numeric. */
+function parseSource(value: unknown): RemoteSource | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Partial<RemoteSource>;
+  if (source.kind !== "hqnow") return undefined;
+  if (typeof source.chapterId !== "number" || !Number.isFinite(source.chapterId)) {
+    return undefined;
+  }
+  return {
+    kind: "hqnow",
+    hqId: typeof source.hqId === "number" && Number.isFinite(source.hqId)
+      ? source.hqId
+      : 0,
+    chapterId: source.chapterId,
+  };
+}
+
 function parse(raw: string | null): Spot | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<Spot>;
     if (typeof value.index !== "number" || value.index < 0) return null;
+    const source = parseSource(value.source);
     return {
       name: typeof value.name === "string" ? value.name : "",
       index: Math.floor(value.index),
       total: typeof value.total === "number" && value.total > 0 ? value.total : 0,
       at: typeof value.at === "number" ? value.at : 0,
+      ...(source ? { source } : {}),
     };
   } catch {
     return null;
@@ -67,9 +95,15 @@ function prune() {
   }
 }
 
-export function rememberSpot(name: string, index: number, total: number, at: number) {
+export function rememberSpot(
+  name: string,
+  index: number,
+  total: number,
+  at: number,
+  source?: RemoteSource | null,
+) {
   try {
-    const spot: Spot = { name, index, total, at };
+    const spot: Spot = { name, index, total, at, ...(source ? { source } : {}) };
     localStorage.setItem(spotKey(name), JSON.stringify(spot));
     prune();
   } catch {

@@ -5,6 +5,7 @@ import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { UpdateHint } from "@/components/pwa/update-hint";
 import { UpdatePrompt } from "@/components/pwa/update-prompt";
 import { ResumeCard } from "@/components/reader/resume-card";
+import { IntegrationsCard } from "@/components/integrations/integrations-card";
 
 export default function Home() {
   return (
@@ -47,6 +48,8 @@ export default function Home() {
         <ResumeCard />
 
         <FileDrop />
+
+        <IntegrationsCard />
       </main>
 
       <footer className="px-6 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-sm text-muted sm:px-10">

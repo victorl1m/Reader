@@ -25,8 +25,15 @@ const ASSET_CACHE = `flowless-assets-${BUILD}`;
  */
 const BUILD_ASSETS = __PRECACHE_ASSETS__;
 
-/** Routes that must work with no network at all. */
-const SHELL_ROUTES = ["/", "/read"];
+/**
+ * Routes that must work with no network at all.
+ *
+ * `/hqs` is here for its shell only. The catalogue behind it is fetched live
+ * from hq-now.com and is offline by definition when there is no network; what
+ * this buys is the page loading and saying so, instead of the reader landing on
+ * the generic offline fallback.
+ */
+const SHELL_ROUTES = ["/", "/read", "/hqs"];
 const PRECACHE = [
   ...SHELL_ROUTES,
   "/unrar.wasm",

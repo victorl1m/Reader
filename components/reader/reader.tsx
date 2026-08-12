@@ -40,6 +40,7 @@ export function Reader() {
   const {
     status,
     fileName,
+    source,
     pages,
     total,
     thumbsReady,
@@ -90,16 +91,18 @@ export function Reader() {
    * The installed app shows the document title beside the app name in window
    * chrome and the task switcher, where "Flowless Reader - Leitura" tells you
    * nothing about which comic that window is. The extension is dropped because
-   * it is noise in a title bar, not because it means anything here.
+   * it is noise in a title bar, not because it means anything here — and only
+   * for a real file, since a chapter from an integration is already named for
+   * a person and can have a dot anywhere in it.
    */
   useEffect(() => {
     if (!fileName) return;
     const previous = document.title;
-    document.title = fileName.replace(/\.[^.]+$/, "");
+    document.title = source ? fileName : fileName.replace(/\.[^.]+$/, "");
     return () => {
       document.title = previous;
     };
-  }, [fileName]);
+  }, [fileName, source]);
 
   // Lock document scrolling while the reader owns the viewport.
   useEffect(() => {

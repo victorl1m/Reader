@@ -8,8 +8,15 @@ import {
   getLatestSpot,
   getServerLatestSpot,
   subscribeSpots,
+  type Spot,
 } from "@/lib/comic/library";
 import { useOpenFile } from "@/lib/comic/use-open-file";
+import { useOpenChapter } from "@/lib/hqnow/use-open-chapter";
+import {
+  getIntegrations,
+  getServerIntegrations,
+  subscribeIntegrations,
+} from "@/lib/integrations/prefs";
 
 /**
  * "Continue reading", in two situations.
@@ -78,17 +85,6 @@ export function ResumeCard() {
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <input
-          ref={inputRef}
-          id={inputId}
-          type="file"
-          className="sr-only"
-          aria-label={`Abrir ${spot.name} outra vez`}
-          onChange={(event) => {
-            accept(event.target.files?.[0]);
-            event.target.value = "";
-          }}
-        />
         <button
           type="button"
           onClick={() => forgetSpot(spot.name)}
@@ -96,15 +92,90 @@ export function ResumeCard() {
         >
           Esquecer
         </button>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-brand-soft"
-        >
-          Abrir de novo
-        </button>
+
+        {spot.source ? (
+          <ResumeIntegration name={spot.name} source={spot.source} />
+        ) : (
+          <>
+            <input
+              ref={inputRef}
+              id={inputId}
+              type="file"
+              className="sr-only"
+              aria-label={`Abrir ${spot.name} outra vez`}
+              onChange={(event) => {
+                accept(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-brand-soft"
+            >
+              Abrir de novo
+            </button>
+          </>
+        )}
       </div>
     </Card>
+  );
+}
+
+/**
+ * Resuming a comic that came from an integration.
+ *
+ * Unlike a local file this one *can* be fetched again, so the card asks for
+ * nothing — unless the integration has since been switched off, in which case
+ * the only honest offer is a way to switch it back on.
+ */
+function ResumeIntegration({
+  name,
+  source,
+}: {
+  /** Display name of the spot, which starts with the comic's own name. */
+  name: string;
+  source: NonNullable<Spot["source"]>;
+}) {
+  const enabled = useSyncExternalStore(
+    subscribeIntegrations,
+    getIntegrations,
+    getServerIntegrations,
+  ).hqnow;
+  const { open, opening, failed } = useOpenChapter();
+
+  if (!enabled) {
+    return (
+      <Link
+        href="/hqs"
+        className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-brand-soft"
+      >
+        Ligar o HQ Now
+      </Link>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {failed ? (
+        <span role="alert" className="text-sm text-brand">
+          {failed}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        disabled={opening !== null}
+        onClick={() =>
+          void open(source.chapterId, {
+            hqId: source.hqId,
+            hqName: name.split(" — ")[0],
+          })
+        }
+        className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-brand-soft disabled:opacity-60"
+      >
+        {opening !== null ? "Abrindo…" : "Continuar lendo"}
+      </button>
+    </div>
   );
 }
 

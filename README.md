@@ -19,7 +19,7 @@ archive is decoded, and the file never leaves your device.
 
 ### [→ Open the reader](https://m-reader-xi.vercel.app/)
 
-[How it works](#how-it-works) · [Controls](#controls) · [Privacy](#privacy) · [Security](#security)
+[How it works](#how-it-works) · [Controls](#controls) · [Integrations](#integrations) · [Privacy](#privacy) · [Security](#security)
 
 </div>
 
@@ -49,6 +49,7 @@ The interface is in Brazilian Portuguese. Code, comments and docs are in English
 | **Resumes where you stopped** | The last page of your 100 most recent books is remembered locally. |
 | **Installable PWA** | Offline app shell, launcher icons, and OS level file handlers so a double clicked `.cbz` opens here. |
 | **Layout that never jumps** | Every page box is reserved from the aspect ratio learned during the thumbnail pass. |
+| **Optional catalogue** | One integration, off by default: search [HQ Now](https://hq-now.com) and read a chapter without leaving the reader. See [Integrations](#integrations). |
 
 ## Quick start
 
@@ -122,7 +123,7 @@ every deploy advertise a different canonical origin.
 
 ## How it works
 
-Opening a comic never touches the network.
+Opening a comic from your device never touches the network.
 
 1. `components/reader/file-drop.tsx` hands the `File` to the store.
 2. `lib/comic/store.tsx` spawns `lib/comic/decoder.worker.ts` and posts it the file.
@@ -177,10 +178,46 @@ Both modes reserve each page's box from the aspect ratio reported by the
 thumbnail pass, which runs far ahead of full-size decoding, so a page arriving
 never shoves the layout around.
 
+## Integrations
+
+Everything above works with no server. An integration is the one thing that
+does not, so it is presented as exactly that: named, **off by default**, and
+switchable from the "Integrações" card on the landing page.
+
+**HQ Now** (`lib/hqnow/`) reads the public GraphQL API at
+`admin.hq-now.com/graphql` — the same one [hq-now.com](https://hq-now.com) uses,
+which answers `Access-Control-Allow-Origin: *`. Turn it on and `/hqs` searches
+the catalogue, lists a comic's chapters and opens one in the reader.
+
+- **The browser talks to hq-now.com directly.** Nothing is proxied through this
+  app, which has no backend to proxy with. The requests carry no credentials and
+  no referrer.
+- **A chapter is pages, not an archive.** `lib/comic/store.tsx` takes a list of
+  image URLs instead of spawning the decoder, and hands it to the *same*
+  retention window, so a chapter can no more pin every page in memory than a
+  local file can. Only pages inside the window are ever fetched.
+- **Page URLs are forced to HTTPS** (`secureUrl`). The catalogue reports `http://`
+  addresses on hosts that serve HTTPS fine; left alone every page would be
+  blocked as mixed content. Anything that is not http(s) is dropped, not
+  upgraded.
+- **The rail shows numbers, not thumbnails,** for a remote chapter. There is no
+  thumbnail pass without a decoder, and pointing the rail at the full-size images
+  would hold more decoded pixels than the retention window exists to prevent.
+- **Reading positions work the same**, keyed by `"<comic> — <chapter>"` plus the
+  ids needed to fetch it again, so the resume card can reopen a chapter instead
+  of asking for a file.
+
+Switching the integration off stops all of it: the catalogue unmounts, in-flight
+requests abort, and nothing under `lib/hqnow/` is reached for again.
+
+The catalogue, its comics and its images belong to hq-now.com. This project
+only reads them.
+
 ## Privacy
 
-Nothing leaves the device and no archive is ever written anywhere. Two things
-are kept in `localStorage`:
+No archive is ever written anywhere, and nothing leaves the device unless an
+[integration](#integrations) is switched on — none is, until you do. Two things
+are kept in `localStorage` (three, once an integration is on):
 
 - **Every setting** (`lib/comic/prefs.ts`): mode, reading direction, spread,
   rail, chrome, strip width. A setting that resets on the next open is a setting
@@ -191,6 +228,9 @@ are kept in `localStorage`:
   benefit. Capped at 100 archives, pruned least-recently-read first. The most
   recent one backs the "continue reading" card on the landing page, which asks
   for the file again and lands on the page it left off.
+- **Which integrations are on** (`lib/integrations/prefs.ts`), once you turn one
+  on. Absent or unreadable means off, which is the safe direction for a setting
+  that decides whether a third party is contacted at all.
 
 ## Security
 
@@ -242,7 +282,11 @@ app/                  routes, metadata, manifest, generated imagery
 components/brand/     logo and wordmark
 components/reader/    drop target, reader shell, viewport, scroller, rail, toolbar
 components/pwa/       service worker, install button, OS file handler
+components/hqnow/     the HQ Now catalogue: search, comic, chapter list
+components/integrations/  the on/off card on the landing page
 lib/comic/            decoder worker, entry sorting, client store, prefs, positions
+lib/hqnow/            HQ Now GraphQL client and chapter opening
+lib/integrations/     which integrations are switched on
 lib/og/               shared artwork for ImageResponse routes
 scripts/              build-time asset generation
 ```
