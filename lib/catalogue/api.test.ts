@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  HqNowError,
+  CatalogueError,
   chapterById,
-  chapterLabel,
-  chapterTitle,
-  hqById,
-  searchHqs,
+  comicById,
+  searchComics,
   secureUrl,
 } from "./api";
+import { chapterLabel, chapterSource, chapterTitle } from "./format";
 
 /** Answers every request with one canned GraphQL payload. */
 function answering(payload: unknown, status = 200) {
@@ -26,14 +25,14 @@ afterEach(() => {
 
 describe("secureUrl", () => {
   it("upgrades the catalogue's http image URLs, which would be blocked as mixed content", () => {
-    expect(secureUrl("http://static.hq-now.com/a/01.jpg")).toBe(
-      "https://static.hq-now.com/a/01.jpg",
+    expect(secureUrl("http://static.example.com/a/01.jpg")).toBe(
+      "https://static.example.com/a/01.jpg",
     );
   });
 
   it("leaves an https URL alone", () => {
-    expect(secureUrl("https://static.hq-now.com/a/01.jpg")).toBe(
-      "https://static.hq-now.com/a/01.jpg",
+    expect(secureUrl("https://static.example.com/a/01.jpg")).toBe(
+      "https://static.example.com/a/01.jpg",
     );
   });
 
@@ -46,7 +45,7 @@ describe("secureUrl", () => {
   });
 });
 
-describe("searchHqs", () => {
+describe("searchComics", () => {
   it("keeps only rows that can actually be opened", async () => {
     answering({
       data: {
@@ -59,7 +58,7 @@ describe("searchHqs", () => {
       },
     });
 
-    await expect(searchHqs("batman")).resolves.toEqual([
+    await expect(searchComics("batman")).resolves.toEqual([
       {
         id: 5,
         name: "Batman",
@@ -72,22 +71,22 @@ describe("searchHqs", () => {
 
   it("has no results rather than an error for an unknown name", async () => {
     answering({ data: { getHqsByName: [] } });
-    await expect(searchHqs("zzzz")).resolves.toEqual([]);
+    await expect(searchComics("zzzz")).resolves.toEqual([]);
   });
 
   it("reports a GraphQL error in words the reader can see", async () => {
     answering({ errors: [{ message: "Variable $name is required" }] });
-    await expect(searchHqs("x")).rejects.toThrow(HqNowError);
+    await expect(searchComics("x")).rejects.toThrow(CatalogueError);
   });
 
   it("reports an HTTP failure", async () => {
     answering({}, 502);
-    await expect(searchHqs("x")).rejects.toThrow(/502/);
+    await expect(searchComics("x")).rejects.toThrow(/502/);
   });
 });
 
-describe("hqById", () => {
-  it("unwraps the single-element array the API answers with", async () => {
+describe("comicById", () => {
+  it("unwraps the single-element array the catalogue answers with", async () => {
     answering({
       data: {
         getHqsById: [
@@ -97,16 +96,16 @@ describe("hqById", () => {
             synopsis: "Gotham.",
             status: "Concluído",
             publisherName: "DC Comics",
-            hqCover: "http://static.hq-now.com/cover.jpg",
+            hqCover: "http://static.example.com/cover.jpg",
             capitulos: [],
           },
         ],
       },
     });
 
-    const hq = await hqById(5);
-    expect(hq.name).toBe("Batman");
-    expect(hq.cover).toBe("https://static.hq-now.com/cover.jpg");
+    const comic = await comicById(5);
+    expect(comic.name).toBe("Batman");
+    expect(comic.cover).toBe("https://static.example.com/cover.jpg");
   });
 
   it("sorts chapters by number, so annuals and specials land in order", async () => {
@@ -128,13 +127,15 @@ describe("hqById", () => {
       },
     });
 
-    const hq = await hqById(5);
-    expect(hq.chapters.map((chapter) => chapter.id)).toEqual([1323, 178, 9, 45, 44]);
+    const comic = await comicById(5);
+    expect(comic.chapters.map((chapter) => chapter.id)).toEqual([
+      1323, 178, 9, 45, 44,
+    ]);
   });
 
   it("rejects a comic the catalogue no longer has", async () => {
     answering({ data: { getHqsById: [] } });
-    await expect(hqById(5)).rejects.toThrow(HqNowError);
+    await expect(comicById(5)).rejects.toThrow(CatalogueError);
   });
 });
 
@@ -147,8 +148,8 @@ describe("chapterById", () => {
           number: "1",
           oneshot: false,
           pictures: [
-            { pictureUrl: "http://static.hq-now.com/pg01.jpg" },
-            { pictureUrl: "http://static.hq-now.com/pg02.jpg" },
+            { pictureUrl: "http://static.example.com/pg01.jpg" },
+            { pictureUrl: "http://static.example.com/pg02.jpg" },
             { pictureUrl: null },
             { pictureUrl: "javascript:alert(1)" },
           ],
@@ -159,14 +160,14 @@ describe("chapterById", () => {
 
     const chapter = await chapterById(9);
     expect(chapter.pages).toEqual([
-      "https://static.hq-now.com/pg01.jpg",
-      "https://static.hq-now.com/pg02.jpg",
+      "https://static.example.com/pg01.jpg",
+      "https://static.example.com/pg02.jpg",
     ]);
-    expect(chapter.hqId).toBe(5);
-    expect(chapter.hqName).toBe("Batman");
+    expect(chapter.comicId).toBe(5);
+    expect(chapter.comicName).toBe("Batman");
   });
 
-  it("rejects the all-null answer the API gives for a chapter that is gone", async () => {
+  it("rejects the all-null answer given for a chapter that is gone", async () => {
     answering({
       data: {
         getChapterById: {
@@ -179,11 +180,21 @@ describe("chapterById", () => {
       },
     });
 
-    await expect(chapterById(1)).rejects.toThrow(HqNowError);
+    await expect(chapterById(1)).rejects.toThrow(CatalogueError);
   });
 });
 
 describe("naming", () => {
+  const chapter = {
+    id: 9,
+    name: "O Truque da Faca",
+    number: "1",
+    oneshot: false,
+    comicId: 5,
+    comicName: "Batman",
+    pages: ["https://static.example.com/pg01.jpg"],
+  };
+
   it("labels a numbered chapter, a named one and a one-shot", () => {
     expect(chapterLabel({ number: "1", name: "O Truque da Faca" })).toBe(
       "#1 · O Truque da Faca",
@@ -194,20 +205,19 @@ describe("naming", () => {
   });
 
   it("builds the name the reading position is keyed under", () => {
-    const chapter = {
-      id: 9,
-      name: "O Truque da Faca",
-      number: "1",
-      oneshot: false,
-      hqId: 5,
-      hqName: "Batman",
-      pages: ["https://static.hq-now.com/pg01.jpg"],
-    };
-
     expect(chapterTitle(chapter)).toBe("Batman — #1 · O Truque da Faca");
     // The chapter payload names its comic; a caller's guess is only a fallback.
-    expect(chapterTitle({ ...chapter, hqName: null }, "Batman")).toBe(
+    expect(chapterTitle({ ...chapter, comicName: null }, "Batman")).toBe(
       "Batman — #1 · O Truque da Faca",
     );
+  });
+
+  it("carries the ids needed to fetch the chapter again", () => {
+    expect(chapterSource(chapter)).toEqual({
+      kind: "catalogue",
+      comicId: 5,
+      chapterId: 9,
+    });
+    expect(chapterSource({ ...chapter, comicId: null }, 12).comicId).toBe(12);
   });
 });

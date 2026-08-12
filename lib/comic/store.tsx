@@ -75,7 +75,7 @@ const initialState: State = {
 type Action =
   | { type: "open"; fileName: string; source: RemoteSource | null }
   | { type: "meta"; format: ArchiveFormat; pages: string[] }
-  | { type: "remote"; names: string[] }
+  | { type: "remote"; pages: string[] }
   | { type: "page"; index: number; url: string }
   | { type: "thumb"; index: number; url: string; ratio: number | null }
   | { type: "evict"; indices: number[] }
@@ -108,21 +108,21 @@ function reducer(state: State, action: Action): State {
     /**
      * A remote comic is ready the moment its page list arrives: there is
      * nothing to decode, so there is no container format and no thumbnail pass
-     * to wait for. The rail falls back to page numbers rather than pointing at
-     * the full-size images — a strip of twenty of those would hold more decoded
-     * pixels than the whole retention window is there to prevent.
+     * to wait for. Thumbnails are a downscaled copy of each page served by the
+     * image optimiser, so the rail is filled in immediately while the full-size
+     * pages are still governed by the retention window below.
      */
     case "remote":
       return {
         ...state,
         status: "ready",
         format: null,
-        thumbsReady: action.names.length,
-        pages: action.names.map((name, index) => ({
+        thumbsReady: action.pages.length,
+        pages: action.pages.map((url, index) => ({
           index,
-          name,
+          name: pageName(url),
           url: null,
-          thumb: null,
+          thumb: thumbUrl(url),
           ratio: null,
         })),
       };
@@ -217,6 +217,26 @@ function pageName(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Rail width in CSS pixels, doubled so the thumbnail still holds up on a
+ * retina screen. Must be one of the sizes `next.config.ts` allows.
+ */
+const THUMB_WIDTH = 96;
+
+/**
+ * A thumbnail for a remote page.
+ *
+ * Routed through the image optimiser rather than pointing the rail at the page
+ * itself: a chapter's pages are ~1 MB each, and twenty of those behind a strip
+ * of 48px boxes is the exact memory-and-bandwidth cost the retention window
+ * exists to avoid. This asks the server for a 96px copy instead — which also
+ * means the rail loads from this origin, with no third-party request per
+ * thumbnail.
+ */
+function thumbUrl(url: string): string {
+  return `/_next/image?url=${encodeURIComponent(url)}&w=${THUMB_WIDTH}&q=60`;
 }
 
 export function ComicProvider({ children }: { children: React.ReactNode }) {
@@ -433,7 +453,7 @@ export function ComicProvider({ children }: { children: React.ReactNode }) {
       }
 
       remoteRef.current = comic.pages;
-      dispatch({ type: "remote", names: comic.pages.map(pageName) });
+      dispatch({ type: "remote", pages: comic.pages });
 
       const resume = recallSpot(comic.name)?.index ?? 0;
       setIndex(Math.max(0, Math.min(comic.pages.length - 1, resume)));

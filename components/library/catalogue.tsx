@@ -1,18 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
-import Link from "next/link";
 import {
-  HqNowError,
-  chapterLabel,
-  hqById,
-  popularHqs,
-  recentHqs,
-  searchHqs,
-  type Hq,
-  type HqSummary,
-} from "@/lib/hqnow/api";
-import { useOpenChapter } from "@/lib/hqnow/use-open-chapter";
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import Link from "next/link";
+import { comic as fetchComic, popular, recent, search } from "@/lib/catalogue/actions";
+import type { Comic, ComicSummary } from "@/lib/catalogue/api";
+import { chapterLabel } from "@/lib/catalogue/format";
+import { useOpenChapter } from "@/lib/catalogue/use-open-chapter";
 import {
   getIntegrations,
   getServerIntegrations,
@@ -33,29 +33,33 @@ const SHELF_SIZE = 12;
 const RESULT_LIMIT = 60;
 
 /**
- * The HQ Now catalogue: search, pick a comic, pick a chapter, read it.
+ * The Biblioteca: search, pick a comic, pick a chapter, read it.
  *
  * Everything here is one client component holding one screen's worth of state,
- * rather than a route per comic. The reader is a static, installable app with
- * no server of its own, and a chapter is opened into memory the same way a
- * dropped file is — so a URL per comic would promise a permalink the reader
- * can't actually restore.
+ * rather than a route per comic. The reader is an installable app whose comics
+ * live in memory for the session, so a URL per comic would promise a permalink
+ * it can't actually restore.
+ *
+ * Every request goes through a server action, so a stale answer can't be
+ * cancelled mid-flight the way an aborted fetch could. Instead each answer
+ * carries the question it answers and is dropped unless it is still the one on
+ * screen — which is also what makes an out-of-order reply harmless.
  */
-export function HqNowCatalogue() {
+export function Catalogue() {
   const enabled = useSyncExternalStore(
     subscribeIntegrations,
     getIntegrations,
     getServerIntegrations,
   ).hqnow;
 
-  const [selected, setSelected] = useState<HqSummary | null>(null);
+  const [selected, setSelected] = useState<ComicSummary | null>(null);
 
-  // Switching the integration off takes the catalogue off screen at once —
-  // which also unmounts whatever was mid-request and aborts it.
+  // Switching the Biblioteca off takes it off screen at once, along with
+  // anything it was showing.
   if (!enabled) return <EnablePrompt />;
 
   return selected ? (
-    <HqDetail summary={selected} onBack={() => setSelected(null)} />
+    <ComicDetail summary={selected} onBack={() => setSelected(null)} />
   ) : (
     <Browse onSelect={setSelected} />
   );
@@ -66,12 +70,11 @@ export function HqNowCatalogue() {
 function EnablePrompt() {
   return (
     <section className="flex flex-col gap-4 rounded-2xl border border-border-subtle bg-surface p-6">
-      <h1 className="text-2xl font-semibold">A integração com o HQ Now está desligada</h1>
+      <h1 className="text-2xl font-semibold">A Biblioteca está desligada</h1>
       <p className="text-muted">
-        Com ela ligada, o Flowless procura quadrinhos no acervo do{" "}
-        <span className="text-foreground">hq-now.com</span> e abre os capítulos aqui
-        no leitor. Isso significa que o seu aparelho passa a falar com esse site —
-        só enquanto a integração estiver ligada.
+        Com ela ligada, o Flowless procura quadrinhos em um acervo online e abre
+        os capítulos aqui no leitor. Enquanto estiver desligada, nada sai deste
+        aparelho.
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -79,7 +82,7 @@ function EnablePrompt() {
           onClick={() => setIntegration("hqnow", true)}
           className="flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
-          Ligar a integração
+          Ligar a Biblioteca
         </button>
         <Link
           href="/"
@@ -94,7 +97,7 @@ function EnablePrompt() {
 
 // --------------------------------------------------------------- browse
 
-function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
+function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
   const searchId = useId();
   const [term, setTerm] = useState("");
   const [query, setQuery] = useState("");
@@ -109,13 +112,15 @@ function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
    */
   const [answer, setAnswer] = useState<{
     query: string;
-    results?: HqSummary[];
+    results?: ComicSummary[];
     error?: string;
   } | null>(null);
+  /** The question in flight, so a slower earlier reply can be ignored. */
+  const asked = useRef("");
 
   const [shelves, setShelves] = useState<{
-    popular: HqSummary[];
-    recent: HqSummary[];
+    popular: ComicSummary[];
+    recent: ComicSummary[];
   } | null>(null);
   const [shelfError, setShelfError] = useState<string | null>(null);
 
@@ -128,34 +133,32 @@ function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
 
   useEffect(() => {
     if (query.length < MIN_QUERY) return;
+    asked.current = query;
 
-    const controller = new AbortController();
-
-    searchHqs(query, controller.signal)
-      .then((results) => setAnswer({ query, results }))
-      .catch((cause) => {
-        if (controller.signal.aborted) return;
-        setAnswer({ query, error: message(cause) });
-      });
-
-    return () => controller.abort();
+    search(query).then((result) => {
+      if (asked.current !== query) return;
+      setAnswer(
+        result.ok ? { query, results: result.data } : { query, error: result.error },
+      );
+    });
   }, [query]);
 
   // The shelves are the empty state, so they are fetched once and kept.
   useEffect(() => {
-    const controller = new AbortController();
+    let live = true;
 
-    Promise.all([
-      popularHqs(SHELF_SIZE, controller.signal),
-      recentHqs(SHELF_SIZE, controller.signal),
-    ])
-      .then(([popular, recent]) => setShelves({ popular, recent }))
-      .catch((cause) => {
-        if (controller.signal.aborted) return;
-        setShelfError(message(cause));
-      });
+    Promise.all([popular(SHELF_SIZE), recent(SHELF_SIZE)]).then(([top, fresh]) => {
+      if (!live) return;
+      if (!top.ok || !fresh.ok) {
+        setShelfError(top.ok ? (fresh.ok ? null : fresh.error) : top.error);
+        return;
+      }
+      setShelves({ popular: top.data, recent: fresh.data });
+    });
 
-    return () => controller.abort();
+    return () => {
+      live = false;
+    };
   }, []);
 
   const searching = query.length >= MIN_QUERY;
@@ -168,7 +171,7 @@ function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <label htmlFor={searchId} className="text-sm text-muted">
-          Procurar no acervo do HQ Now
+          Procurar na Biblioteca
         </label>
         <input
           id={searchId}
@@ -197,9 +200,9 @@ function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
           ) : results && results.length ? (
             <>
               <ul className="flex flex-col divide-y divide-border-subtle overflow-hidden rounded-2xl border border-border-subtle bg-surface">
-                {results.slice(0, RESULT_LIMIT).map((hq) => (
-                  <li key={hq.id}>
-                    <HqRow hq={hq} onSelect={onSelect} />
+                {results.slice(0, RESULT_LIMIT).map((comic) => (
+                  <li key={comic.id}>
+                    <ComicRow comic={comic} onSelect={onSelect} />
                   </li>
                 ))}
               </ul>
@@ -218,10 +221,10 @@ function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
         </section>
       ) : shelves ? (
         <>
-          <Shelf title="Mais lidos" hqs={shelves.popular} onSelect={onSelect} />
+          <Shelf title="Mais lidos" comics={shelves.popular} onSelect={onSelect} />
           <Shelf
             title="Atualizados há pouco"
-            hqs={shelves.recent}
+            comics={shelves.recent}
             onSelect={onSelect}
           />
         </>
@@ -234,21 +237,21 @@ function Browse({ onSelect }: { onSelect: (hq: HqSummary) => void }) {
 
 function Shelf({
   title,
-  hqs,
+  comics,
   onSelect,
 }: {
   title: string;
-  hqs: HqSummary[];
-  onSelect: (hq: HqSummary) => void;
+  comics: ComicSummary[];
+  onSelect: (comic: ComicSummary) => void;
 }) {
-  if (!hqs.length) return null;
+  if (!comics.length) return null;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-medium text-muted">{title}</h2>
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {hqs.map((hq) => (
-          <li key={hq.id}>
-            <HqCard hq={hq} onSelect={onSelect} />
+        {comics.map((comic) => (
+          <li key={comic.id}>
+            <ComicCard comic={comic} onSelect={onSelect} />
           </li>
         ))}
       </ul>
@@ -256,51 +259,58 @@ function Shelf({
   );
 }
 
-function HqCard({
-  hq,
+function ComicCard({
+  comic,
   onSelect,
 }: {
-  hq: HqSummary;
-  onSelect: (hq: HqSummary) => void;
+  comic: ComicSummary;
+  onSelect: (comic: ComicSummary) => void;
 }) {
   return (
     <button
       type="button"
-      onClick={() => onSelect(hq)}
+      onClick={() => onSelect(comic)}
       className="group flex w-full flex-col gap-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       <span className="block aspect-[2/3] w-full overflow-hidden rounded-xl border border-border-subtle bg-surface">
-        {hq.cover ? (
+        {comic.cover ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={hq.cover}
+            src={comic.cover}
             alt=""
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
             loading="lazy"
             decoding="async"
+            referrerPolicy="no-referrer"
             draggable={false}
           />
         ) : null}
       </span>
-      <span className="line-clamp-2 text-sm text-foreground">{hq.name}</span>
-      {hq.publisher ? (
-        <span className="text-xs text-muted">{hq.publisher}</span>
+      <span className="line-clamp-2 text-sm text-foreground">{comic.name}</span>
+      {comic.publisher ? (
+        <span className="text-xs text-muted">{comic.publisher}</span>
       ) : null}
     </button>
   );
 }
 
-function HqRow({ hq, onSelect }: { hq: HqSummary; onSelect: (hq: HqSummary) => void }) {
+function ComicRow({
+  comic,
+  onSelect,
+}: {
+  comic: ComicSummary;
+  onSelect: (comic: ComicSummary) => void;
+}) {
   return (
     <button
       type="button"
-      onClick={() => onSelect(hq)}
+      onClick={() => onSelect(comic)}
       className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
     >
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm text-foreground">{hq.name}</span>
+        <span className="truncate text-sm text-foreground">{comic.name}</span>
         <span className="truncate text-xs text-muted">
-          {[hq.publisher, hq.status].filter(Boolean).join(" · ")}
+          {[comic.publisher, comic.status].filter(Boolean).join(" · ")}
         </span>
       </span>
       <span className="shrink-0 text-xs text-muted" aria-hidden>
@@ -312,42 +322,47 @@ function HqRow({ hq, onSelect }: { hq: HqSummary; onSelect: (hq: HqSummary) => v
 
 // --------------------------------------------------------------- one comic
 
-function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void }) {
+function ComicDetail({
+  summary,
+  onBack,
+}: {
+  summary: ComicSummary;
+  onBack: () => void;
+}) {
   // Tagged with the comic it describes, so a detail still arriving for the
   // previous one is never mistaken for this one's. See `Browse`.
   const [loaded, setLoaded] = useState<{
     id: number;
-    hq?: Hq;
+    comic?: Comic;
     error?: string;
   } | null>(null);
   const { open, opening, failed: openFailed } = useOpenChapter();
 
   useEffect(() => {
-    const controller = new AbortController();
     const id = summary.id;
+    let live = true;
 
-    hqById(id, controller.signal)
-      .then((hq) => setLoaded({ id, hq }))
-      .catch((cause) => {
-        if (controller.signal.aborted) return;
-        setLoaded({ id, error: message(cause) });
-      });
+    fetchComic(id).then((result) => {
+      if (!live) return;
+      setLoaded(result.ok ? { id, comic: result.data } : { id, error: result.error });
+    });
 
-    return () => controller.abort();
+    return () => {
+      live = false;
+    };
   }, [summary.id]);
-
-  const current = loaded?.id === summary.id ? loaded : null;
-  const hq = current?.hq ?? null;
-  const failed = current?.error ?? null;
 
   const openChapter = useCallback(
     (chapterId: number) => {
-      void open(chapterId, { hqId: summary.id, hqName: summary.name });
+      void open(chapterId, { comicId: summary.id, comicName: summary.name });
     },
     [open, summary.id, summary.name],
   );
 
-  const cover = hq?.cover ?? summary.cover;
+  const current = loaded?.id === summary.id ? loaded : null;
+  const comic = current?.comic ?? null;
+  const failed = current?.error ?? null;
+  const cover = comic?.cover ?? summary.cover;
 
   return (
     <div className="flex flex-col gap-6">
@@ -356,7 +371,7 @@ function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void 
         onClick={onBack}
         className="self-start rounded-full px-1 text-sm text-muted transition-colors hover:text-foreground"
       >
-        ← Voltar ao acervo
+        ← Voltar à Biblioteca
       </button>
 
       <div className="flex flex-col gap-5 sm:flex-row">
@@ -368,6 +383,7 @@ function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void 
               alt=""
               className="h-full w-full object-cover"
               decoding="async"
+              referrerPolicy="no-referrer"
               draggable={false}
             />
           </div>
@@ -376,13 +392,13 @@ function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void 
         <div className="flex min-w-0 flex-col gap-2">
           <h1 className="text-2xl font-semibold text-balance">{summary.name}</h1>
           <p className="text-sm text-muted">
-            {[hq?.publisher ?? summary.publisher, hq?.status ?? summary.status]
+            {[comic?.publisher ?? summary.publisher, comic?.status ?? summary.status]
               .filter(Boolean)
               .join(" · ")}
           </p>
-          {hq?.synopsis ? (
+          {comic?.synopsis ? (
             <p className="text-sm leading-relaxed text-muted text-pretty">
-              {hq.synopsis}
+              {comic.synopsis}
             </p>
           ) : null}
         </div>
@@ -399,18 +415,18 @@ function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void 
         </p>
       ) : null}
 
-      {!hq && !failed ? <Sweeping /> : null}
+      {!comic && !failed ? <Sweeping /> : null}
 
-      {hq ? (
-        hq.chapters.length ? (
+      {comic ? (
+        comic.chapters.length ? (
           <section className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-muted">
-              {hq.chapters.length === 1
+              {comic.chapters.length === 1
                 ? "1 capítulo"
-                : `${hq.chapters.length} capítulos`}
+                : `${comic.chapters.length} capítulos`}
             </h2>
             <ul className="grid gap-2 sm:grid-cols-2">
-              {hq.chapters.map((chapter) => (
+              {comic.chapters.map((chapter) => (
                 <li key={chapter.id}>
                   <button
                     type="button"
@@ -428,7 +444,7 @@ function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void 
             </ul>
           </section>
         ) : (
-          <p className="text-muted">Esse quadrinho ainda não tem capítulos no acervo.</p>
+          <p className="text-muted">Esse quadrinho ainda não tem capítulos por aqui.</p>
         )
       ) : null}
     </div>
@@ -439,15 +455,12 @@ function HqDetail({ summary, onBack }: { summary: HqSummary; onBack: () => void 
 
 function Sweeping() {
   return (
-    <div className="h-1 w-40 overflow-hidden rounded-full bg-surface-raised" role="status">
+    <div
+      className="h-1 w-40 overflow-hidden rounded-full bg-surface-raised"
+      role="status"
+    >
       <div className="h-full w-1/3 rounded-full bg-brand animate-flow-sweep" />
       <span className="sr-only">Carregando…</span>
     </div>
   );
-}
-
-function message(cause: unknown): string {
-  return cause instanceof HqNowError
-    ? cause.message
-    : "Algo deu errado ao falar com o HQ Now.";
 }

@@ -5,6 +5,7 @@ import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { UpdateHint } from "@/components/pwa/update-hint";
 import { UpdatePrompt } from "@/components/pwa/update-prompt";
 import { ResumeCard } from "@/components/reader/resume-card";
+import { Shelf } from "@/components/reader/shelf";
 import { IntegrationsCard } from "@/components/integrations/integrations-card";
 
 export default function Home() {
@@ -48,6 +49,8 @@ export default function Home() {
         <ResumeCard />
 
         <FileDrop />
+
+        <Shelf />
 
         <IntegrationsCard />
       </main>

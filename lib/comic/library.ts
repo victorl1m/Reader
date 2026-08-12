@@ -38,19 +38,25 @@ const MAX_SPOTS = 100;
 /** Names differing only in case or surrounding space are the same book. */
 export const spotKey = (name: string) => `${PREFIX}${name.trim().toLowerCase()}`;
 
-/** A source only survives a round trip if it is still complete and numeric. */
+/**
+ * A source only survives a round trip if it is still complete and numeric.
+ *
+ * `hqnow`/`hqId` is what the first version of this wrote. Reading it back costs
+ * two lines and saves anyone who had already started a chapter from losing
+ * their place to a rename.
+ */
 function parseSource(value: unknown): RemoteSource | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const source = value as Partial<RemoteSource>;
-  if (source.kind !== "hqnow") return undefined;
+  const source = value as Partial<RemoteSource> & { hqId?: unknown };
+  if (source.kind !== "catalogue" && source.kind !== "hqnow") return undefined;
   if (typeof source.chapterId !== "number" || !Number.isFinite(source.chapterId)) {
     return undefined;
   }
+  const comicId = source.comicId ?? source.hqId;
   return {
-    kind: "hqnow",
-    hqId: typeof source.hqId === "number" && Number.isFinite(source.hqId)
-      ? source.hqId
-      : 0,
+    kind: "catalogue",
+    comicId:
+      typeof comicId === "number" && Number.isFinite(comicId) ? comicId : 0,
     chapterId: source.chapterId,
   };
 }
@@ -129,31 +135,39 @@ export function forgetSpot(name: string) {
   publish();
 }
 
-// ------------------------------------------------------- most recent, as a store
+// ------------------------------------------------------- the shelf, as a store
 
 /**
- * The most recently read comic, exposed as an external store.
+ * Everything remembered, most recently read first, exposed as an external
+ * store.
  *
  * Read through `useSyncExternalStore` rather than an effect: the server has no
- * localStorage, so the card renders empty and fills in on hydration, without a
+ * localStorage, so the shelf renders empty and fills in on hydration, without a
  * second render pass chasing it. The snapshot has to be referentially stable
- * between changes, hence the cache.
+ * between changes, hence the cache — and it is the *list* that is cached, so
+ * that "the most recent one" is just its first entry rather than a second
+ * snapshot that could drift out of step with it.
  */
 
 const listeners = new Set<() => void>();
-let cached: Spot | null = null;
+/** Shared empty snapshot, so an empty shelf is still referentially stable. */
+const NONE: readonly Spot[] = Object.freeze([]);
+let cached: readonly Spot[] = NONE;
 let cacheValid = false;
 
-function compute(): Spot | null {
+function compute(): readonly Spot[] {
   try {
-    let best: Spot | null = null;
+    const spots: Spot[] = [];
     for (const key of keys()) {
       const spot = parse(localStorage.getItem(key));
-      if (spot && spot.name && (!best || spot.at > best.at)) best = spot;
+      if (spot && spot.name) spots.push(spot);
     }
-    return best;
+    if (!spots.length) return NONE;
+    // Most recent first, and stable for two reads at the same millisecond.
+    spots.sort((a, b) => b.at - a.at || a.name.localeCompare(b.name));
+    return spots;
   } catch {
-    return null;
+    return NONE;
   }
 }
 
@@ -173,12 +187,21 @@ export function subscribeSpots(onChange: () => void) {
   };
 }
 
-export function getLatestSpot(): Spot | null {
+/** Every remembered comic, most recently read first. */
+export function getAllSpots(): readonly Spot[] {
   if (!cacheValid) {
     cached = compute();
     cacheValid = true;
   }
   return cached;
+}
+
+export function getServerAllSpots(): readonly Spot[] {
+  return NONE;
+}
+
+export function getLatestSpot(): Spot | null {
+  return getAllSpots()[0] ?? null;
 }
 
 export function getServerLatestSpot(): Spot | null {

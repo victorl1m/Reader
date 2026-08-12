@@ -91,6 +91,94 @@ describe("library", () => {
     const library = await fresh();
     expect(library.getLatestSpot()).toBeNull();
     expect(library.getServerLatestSpot()).toBeNull();
+    expect(library.getAllSpots()).toEqual([]);
+    expect(library.getServerAllSpots()).toEqual([]);
+  });
+
+  it("lists everything read, most recent first", async () => {
+    const library = await fresh();
+    library.rememberSpot("old.cbr", 3, 20, 1000);
+    library.rememberSpot("newest.cbr", 8, 30, 5000);
+    library.rememberSpot("middle.cbr", 5, 25, 3000);
+
+    expect(library.getAllSpots().map((spot) => spot.name)).toEqual([
+      "newest.cbr",
+      "middle.cbr",
+      "old.cbr",
+    ]);
+  });
+
+  it("keeps the list stable until a position changes", async () => {
+    const library = await fresh();
+    library.rememberSpot("a.cbr", 1, 10, 1000);
+
+    const before = library.getAllSpots();
+    expect(library.getAllSpots()).toBe(before);
+    // The latest is the first of the same list, not a second snapshot.
+    expect(library.getLatestSpot()).toBe(before[0]);
+
+    library.rememberSpot("b.cbr", 1, 10, 2000);
+    expect(library.getAllSpots()).not.toBe(before);
+    expect(library.getAllSpots()).toHaveLength(2);
+  });
+
+  it("keeps an empty list referentially stable too", async () => {
+    const library = await fresh();
+    expect(library.getAllSpots()).toBe(library.getServerAllSpots());
+  });
+
+  it("lists a comic from an integration with the ids needed to fetch it again", async () => {
+    const library = await fresh();
+    library.rememberSpot("Batman — #1", 2, 25, 1000, {
+      kind: "catalogue",
+      comicId: 5,
+      chapterId: 9,
+    });
+
+    expect(library.getAllSpots()[0].source).toEqual({
+      kind: "catalogue",
+      comicId: 5,
+      chapterId: 9,
+    });
+    // A local file has none, and never gains one.
+    library.rememberSpot("local.cbr", 1, 10, 2000);
+    expect(library.recallSpot("local.cbr")?.source).toBeUndefined();
+  });
+
+  it("still reads a position saved under the first naming, so nobody loses their page", async () => {
+    const library = await fresh();
+    localStorage.setItem(
+      library.spotKey("Batman — #1"),
+      JSON.stringify({
+        name: "Batman — #1",
+        index: 2,
+        total: 25,
+        at: 1000,
+        source: { kind: "hqnow", hqId: 5, chapterId: 9 },
+      }),
+    );
+
+    expect(library.recallSpot("Batman — #1")?.source).toEqual({
+      kind: "catalogue",
+      comicId: 5,
+      chapterId: 9,
+    });
+  });
+
+  it("drops a source that couldn't identify a chapter", async () => {
+    const library = await fresh();
+    localStorage.setItem(
+      library.spotKey("odd.cbr"),
+      JSON.stringify({
+        name: "odd.cbr",
+        index: 1,
+        total: 10,
+        at: 1000,
+        source: { kind: "catalogue", comicId: 5 },
+      }),
+    );
+
+    expect(library.recallSpot("odd.cbr")?.source).toBeUndefined();
   });
 
   it("keeps the snapshot stable until a position changes", async () => {

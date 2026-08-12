@@ -50,6 +50,31 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
 
+  /**
+   * Thumbnails for the Biblioteca's pages.
+   *
+   * A remote chapter has no thumbnail pass behind it — there is no decoder in
+   * the loop to build one — and the catalogue's images carry no CORS header, so
+   * the browser can neither fetch nor downscale them itself: drawing one to a
+   * canvas taints it. The optimiser is the way out. It fetches server-side and
+   * hands back a 96px copy of a page that is otherwise a megabyte, which is
+   * what makes a rail of them affordable at all.
+   *
+   * Only this host, only these sizes: the endpoint is public, and an
+   * unrestricted one is an open image proxy.
+   */
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "static.hq-now.com", pathname: "/**" },
+    ],
+    imageSizes: [96],
+    deviceSizes: [640],
+    qualities: [60],
+    // A page is read once and the rail is redrawn on every open; a long TTL
+    // keeps the optimiser from re-fetching the same page all day.
+    minimumCacheTTL: 60 * 60 * 24 * 7,
+  },
+
   async headers() {
     return [
       {

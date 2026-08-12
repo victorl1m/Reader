@@ -88,8 +88,8 @@ export type ComicStatus = "idle" | "opening" | "ready" | "error";
  * can be, so a source carries the little it takes to fetch it a second time.
  */
 export type RemoteSource = {
-  kind: "hqnow";
-  hqId: number;
+  kind: "catalogue";
+  comicId: number;
   chapterId: number;
 };
 

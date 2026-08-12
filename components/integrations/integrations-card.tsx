@@ -38,14 +38,14 @@ export function IntegrationsCard() {
       <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-sm font-medium text-foreground">HQ Now</span>
+            <span className="text-sm font-medium text-foreground">Biblioteca</span>
             <span className="text-sm text-muted">
-              Procurar e ler quadrinhos do acervo do hq-now.com
+              Procurar e ler quadrinhos de um acervo online
             </span>
           </div>
 
           <Switch
-            label="Integração com o HQ Now"
+            label="Biblioteca"
             on={integrations.hqnow}
             onChange={(on) => setIntegration("hqnow", on)}
           />
@@ -54,14 +54,14 @@ export function IntegrationsCard() {
         {integrations.hqnow ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-3">
             <p className="text-xs text-muted">
-              Ligada: as buscas e as páginas dos capítulos são baixadas do
-              hq-now.com pelo seu aparelho.
+              Ligada: as buscas e os capítulos passam pela internet. Seus arquivos
+              continuam abrindo só no seu aparelho.
             </p>
             <Link
-              href="/hqs"
+              href="/biblioteca"
               className="flex min-h-11 items-center rounded-full bg-brand px-4 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
-              Abrir acervo
+              Abrir Biblioteca
             </Link>
           </div>
         ) : null}

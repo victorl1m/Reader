@@ -6,10 +6,10 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // `/read` is pure client state over a local file and `/hqs` is someone
-      // else's catalogue, fetched in the browser — there is nothing at either
-      // to index, and the generated imagery is not content.
-      disallow: ["/read", "/hqs", "/icons/", "/screenshots/"],
+      // `/read` is pure client state over a local file and `/biblioteca` is a
+      // catalogue fetched per request — there is nothing at either to index,
+      // and the generated imagery is not content.
+      disallow: ["/read", "/biblioteca", "/icons/", "/screenshots/"],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

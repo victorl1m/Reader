@@ -225,9 +225,10 @@ are kept in `localStorage` (three, once an integration is on):
 - **The last page read** (`lib/comic/library.ts`), keyed by file *name* alone.
   The same issue re-downloaded or moved has a different size and timestamp while
   still being the same read, so keying on those loses the position for no
-  benefit. Capped at 100 archives, pruned least-recently-read first. The most
-  recent one backs the "continue reading" card on the landing page, which asks
-  for the file again and lands on the page it left off.
+  benefit. Capped at 100 archives, pruned least-recently-read first. All of them
+  back the "Você já leu" shelf on the landing page, most recent first: a chapter
+  from an integration reopens itself, while a local file is asked for again and
+  lands on the page it left off.
 - **Which integrations are on** (`lib/integrations/prefs.ts`), once you turn one
   on. Absent or unreadable means off, which is the safe direction for a setting
   that decides whether a third party is contacted at all.
@@ -280,7 +281,7 @@ All are `force-static`, so they are generated once at build time.
 ```
 app/                  routes, metadata, manifest, generated imagery
 components/brand/     logo and wordmark
-components/reader/    drop target, reader shell, viewport, scroller, rail, toolbar
+components/reader/    drop target, shelf, reader shell, viewport, scroller, rail, toolbar
 components/pwa/       service worker, install button, OS file handler
 components/hqnow/     the HQ Now catalogue: search, comic, chapter list
 components/integrations/  the on/off card on the landing page

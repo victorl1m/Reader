@@ -7,11 +7,17 @@
  * that breaks it — for one catalogue, on purpose, at the reader's request. So
  * the setting is stored and read exactly like the reading prefs (an external
  * store, so the server renders "off" and the client swaps in the real value
- * without a flash), and nothing in `lib/hqnow` is reached for until it is on.
+ * without a flash), and nothing in `lib/catalogue` is reached for until it is
+ * on.
  */
 
 export type Integrations = {
-  /** The HQ Now catalogue: search and read comics hosted at hq-now.com. */
+  /**
+   * The Biblioteca: search and read comics from an online catalogue.
+   *
+   * Stored under its original key, so switching it on once keeps it on across
+   * the rename.
+   */
   hqnow: boolean;
 };
 
