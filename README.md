@@ -49,7 +49,7 @@ The interface is in Brazilian Portuguese. Code, comments and docs are in English
 | **Resumes where you stopped** | The last page of your 100 most recent books is remembered locally. |
 | **Installable PWA** | Offline app shell, launcher icons, and OS level file handlers so a double clicked `.cbz` opens here. |
 | **Layout that never jumps** | Every page box is reserved from the aspect ratio learned during the thumbnail pass. |
-| **Optional catalogue** | One integration, off by default: search [HQ Now](https://hq-now.com) and read a chapter without leaving the reader. See [Integrations](#integrations). |
+| **Biblioteca** | One integration, off by default: search an online catalogue and read a chapter without leaving the reader. See [Integrations](#integrations). |
 
 ## Quick start
 
@@ -87,7 +87,10 @@ outputs are generated and git-ignored.
 
 The live deployment is [m-reader-xi.vercel.app](https://m-reader-xi.vercel.app/).
 Nothing but a static host and a Node runtime is required: there is no database,
-no storage bucket and no API key, because there is no backend.
+no storage bucket and no API key. The Node runtime is not optional, though: the
+[Biblioteca](#integrations) reaches its catalogue through server actions, and
+its thumbnails through the image optimiser. With the integration off, neither is
+ever touched.
 
 Set `NEXT_PUBLIC_SITE_URL` to the stable public origin so canonical and Open
 Graph URLs are correct:
@@ -180,18 +183,23 @@ never shoves the layout around.
 
 ## Integrations
 
-Everything above works with no server. An integration is the one thing that
-does not, so it is presented as exactly that: named, **off by default**, and
-switchable from the "Integrações" card on the landing page.
+Opening a file needs no server. The **Biblioteca** does, so it is presented as
+exactly that: **off by default**, switchable from the "Integrações" card on the
+landing page, and inert until someone turns it on. Once on, `/biblioteca`
+searches an online catalogue, lists a comic's chapters and opens one in the
+reader.
 
-**HQ Now** (`lib/hqnow/`) reads the public GraphQL API at
-`admin.hq-now.com/graphql` — the same one [hq-now.com](https://hq-now.com) uses,
-which answers `Access-Control-Allow-Origin: *`. Turn it on and `/hqs` searches
-the catalogue, lists a comic's chapters and opens one in the reader.
+Upstream is the public GraphQL API of [hq-now.com](https://hq-now.com), which is
+where the catalogue, the comics and the images come from. This project only
+reads them, and names itself in the UI rather than the source, so nothing in the
+interface speaks for someone else's site.
 
-- **The browser talks to hq-now.com directly.** Nothing is proxied through this
-  app, which has no backend to proxy with. The requests carry no credentials and
-  no referrer.
+- **Every call is a server action** (`lib/catalogue/actions.ts`). The browser
+  talks to this origin and nothing else; the third party is reached from the
+  server, so there is no CORS to depend on and one place to cache or replace it.
+  Failure is *returned*, never thrown — a thrown error reaches the browser with
+  its message replaced in production, and "that chapter has no pages" is worth
+  keeping.
 - **A chapter is pages, not an archive.** `lib/comic/store.tsx` takes a list of
   image URLs instead of spawning the decoder, and hands it to the *same*
   retention window, so a chapter can no more pin every page in memory than a
@@ -200,18 +208,23 @@ the catalogue, lists a comic's chapters and opens one in the reader.
   addresses on hosts that serve HTTPS fine; left alone every page would be
   blocked as mixed content. Anything that is not http(s) is dropped, not
   upgraded.
-- **The rail shows numbers, not thumbnails,** for a remote chapter. There is no
-  thumbnail pass without a decoder, and pointing the rail at the full-size images
-  would hold more decoded pixels than the retention window exists to prevent.
+- **Thumbnails go through the image optimiser** (`lib/images.ts`). The source
+  images carry no CORS header, so the browser can neither fetch nor downscale
+  them — drawing one to a canvas taints it — and a rail pointed at the originals
+  would pull a megabyte per 48px box. `next.config.ts` allows exactly one host
+  and two widths, which is what keeps the endpoint from being an open image
+  proxy. A page thumbnail is ~3 KB instead of ~176 KB.
+- **Search fills covers in afterwards.** The search query answers without them
+  and takes no `loadCovers`, so a cover is one lookup per comic — twelve of them
+  cost about a second. Blocking a search on that would be silly, so the grid
+  renders names first and covers arrive after, from a bounded server-side cache
+  that answers a repeat search in about 5 ms.
 - **Reading positions work the same**, keyed by `"<comic> — <chapter>"` plus the
-  ids needed to fetch it again, so the resume card can reopen a chapter instead
-  of asking for a file.
+  ids needed to fetch it again, so the shelf can reopen a chapter instead of
+  asking for a file.
 
-Switching the integration off stops all of it: the catalogue unmounts, in-flight
-requests abort, and nothing under `lib/hqnow/` is reached for again.
-
-The catalogue, its comics and its images belong to hq-now.com. This project
-only reads them.
+Switching it off stops all of it: the catalogue unmounts and nothing under
+`lib/catalogue/` is reached for again.
 
 ## Privacy
 
@@ -283,10 +296,12 @@ app/                  routes, metadata, manifest, generated imagery
 components/brand/     logo and wordmark
 components/reader/    drop target, shelf, reader shell, viewport, scroller, rail, toolbar
 components/pwa/       service worker, install button, OS file handler
-components/hqnow/     the HQ Now catalogue: search, comic, chapter list
+components/home/      the landing pitch, hidden once something has been read
+components/library/   the Biblioteca: search, comic, chapter list
 components/integrations/  the on/off card on the landing page
 lib/comic/            decoder worker, entry sorting, client store, prefs, positions
-lib/hqnow/            HQ Now GraphQL client and chapter opening
+lib/catalogue/        catalogue client, server actions, chapter opening
+lib/images.ts         remote images resized by this origin
 lib/integrations/     which integrations are switched on
 lib/og/               shared artwork for ImageResponse routes
 scripts/              build-time asset generation

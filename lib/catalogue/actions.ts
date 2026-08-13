@@ -17,6 +17,7 @@ import {
   CatalogueError,
   chapterById,
   comicById,
+  coversByIds,
   popularComics,
   recentComics,
   searchComics,
@@ -28,6 +29,11 @@ import {
 
 /** Ceiling on a shelf, so a caller can't ask the catalogue for everything. */
 const MAX_SHELF = 24;
+/**
+ * Ceiling on one cover request. Each id is a separate lookup upstream, so this
+ * is the number that decides how much work a single call can cause.
+ */
+const MAX_COVERS = 24;
 
 async function attempt<T>(work: () => Promise<T>): Promise<Result<T>> {
   try {
@@ -53,6 +59,24 @@ export async function popular(limit: number): Promise<Result<ComicSummary[]>> {
 
 export async function recent(limit: number): Promise<Result<ComicSummary[]>> {
   return attempt(() => recentComics(clamp(limit)));
+}
+
+/**
+ * Covers for comics already found, fetched after the fact.
+ *
+ * Search has no covers in it, so the grid asks for these once the names are
+ * already on screen. Answered as a list rather than a keyed object because
+ * numeric keys don't survive the trip as numbers.
+ */
+export async function covers(
+  ids: number[],
+): Promise<Result<{ id: number; cover: string | null }[]>> {
+  const wanted = Array.from(
+    new Set((Array.isArray(ids) ? ids : []).filter(Number.isFinite).map(Math.trunc)),
+  ).slice(0, MAX_COVERS);
+
+  if (!wanted.length) return { ok: true, data: [] };
+  return attempt(() => coversByIds(wanted));
 }
 
 export async function comic(id: number): Promise<Result<Comic>> {

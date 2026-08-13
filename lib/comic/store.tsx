@@ -30,6 +30,7 @@ import {
   type ReadingMode,
 } from "./prefs";
 import { recallSpot, rememberSpot } from "./library";
+import { THUMB_WIDTH, optimized } from "@/lib/images";
 
 export type { ReadingMode };
 
@@ -220,23 +221,16 @@ function pageName(url: string): string {
 }
 
 /**
- * Rail width in CSS pixels, doubled so the thumbnail still holds up on a
- * retina screen. Must be one of the sizes `next.config.ts` allows.
- */
-const THUMB_WIDTH = 96;
-
-/**
  * A thumbnail for a remote page.
  *
  * Routed through the image optimiser rather than pointing the rail at the page
  * itself: a chapter's pages are ~1 MB each, and twenty of those behind a strip
  * of 48px boxes is the exact memory-and-bandwidth cost the retention window
- * exists to avoid. This asks the server for a 96px copy instead — which also
- * means the rail loads from this origin, with no third-party request per
- * thumbnail.
+ * exists to avoid. A 96px copy is ~3 KB — and it loads from this origin, so the
+ * rail costs no third-party request either.
  */
 function thumbUrl(url: string): string {
-  return `/_next/image?url=${encodeURIComponent(url)}&w=${THUMB_WIDTH}&q=60`;
+  return optimized(url, THUMB_WIDTH);
 }
 
 export function ComicProvider({ children }: { children: React.ReactNode }) {

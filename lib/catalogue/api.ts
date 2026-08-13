@@ -294,6 +294,62 @@ export async function comicById(id: number): Promise<Comic> {
   };
 }
 
+const COVER = `query getHqsById($id: Int!) {
+  getHqsById(id: $id) {
+    id
+    hqCover
+  }
+}`;
+
+/**
+ * Covers for comics found by name.
+ *
+ * Search answers without them — `hqCover` comes back null there and the query
+ * takes no `loadCovers` — so a cover is one lookup per comic, and twelve of
+ * those take about four seconds. Blocking a search on that would be absurd, so
+ * this is a second, later call, and what it finds is kept: the same comics come
+ * back for the same words, and the second search should not pay again.
+ */
+const covers = new Map<number, string | null>();
+/** Ceiling on the cover cache, so a long-lived server can't grow forever. */
+const COVER_CACHE_MAX = 500;
+
+function remember(id: number, cover: string | null) {
+  // Re-inserting moves the entry to the end, so the oldest is always first.
+  covers.delete(id);
+  covers.set(id, cover);
+  if (covers.size > COVER_CACHE_MAX) {
+    const oldest = covers.keys().next();
+    if (!oldest.done) covers.delete(oldest.value);
+  }
+}
+
+export async function coversByIds(
+  ids: number[],
+): Promise<{ id: number; cover: string | null }[]> {
+  return Promise.all(
+    ids.map(async (id) => {
+      const known = covers.get(id);
+      if (known !== undefined) return { id, cover: known };
+
+      try {
+        const raw = await query(COVER, { id }, "getHqsById");
+        const row = (Array.isArray(raw) ? raw[0] : raw) as Record<
+          string,
+          unknown
+        > | null;
+        const cover = secureUrl(row?.hqCover);
+        remember(id, cover);
+        return { id, cover };
+      } catch {
+        // One missing cover is a gap in a grid, not a failed search. It is not
+        // cached either, so a hiccup doesn't blank that comic until restart.
+        return { id, cover: null };
+      }
+    }),
+  );
+}
+
 /** One chapter with its page images resolved. */
 export async function chapterById(chapterId: number): Promise<Chapter> {
   const raw = (await query(CHAPTER, { chapterId }, "getChapterById")) as Record<

@@ -4,15 +4,23 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import Link from "next/link";
-import { comic as fetchComic, popular, recent, search } from "@/lib/catalogue/actions";
+import {
+  comic as fetchComic,
+  covers as fetchCovers,
+  popular,
+  recent,
+  search,
+} from "@/lib/catalogue/actions";
 import type { Comic, ComicSummary } from "@/lib/catalogue/api";
 import { chapterLabel } from "@/lib/catalogue/format";
 import { useOpenChapter } from "@/lib/catalogue/use-open-chapter";
+import { COVER_WIDTH, optimized } from "@/lib/images";
 import {
   getIntegrations,
   getServerIntegrations,
@@ -26,11 +34,13 @@ const DEBOUNCE_MS = 350;
 const MIN_QUERY = 2;
 const SHELF_SIZE = 12;
 /**
- * How many results are listed. A common word answers with hundreds — "batman"
- * alone is 246 — and a list that long is scrolling, not choosing. The count
- * below it says what was left out rather than pretending this was all of it.
+ * How many results are shown. A common word answers with hundreds — "batman"
+ * alone is 246 — and a grid that long is scrolling, not choosing. It is also
+ * the number of cover lookups a search causes, since each one is its own
+ * request upstream. The count below the grid says what was left out rather
+ * than pretending this was all of it.
  */
-const RESULT_LIMIT = 60;
+const RESULT_LIMIT = 24;
 
 /**
  * The Biblioteca: search, pick a comic, pick a chapter, read it.
@@ -167,6 +177,10 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
   const busy = searching && current === null;
   const failed = (searching ? current?.error : shelfError) ?? null;
 
+  // Memoised so the cover lookup below keys off the answer, not off renders.
+  const shown = useMemo(() => results?.slice(0, RESULT_LIMIT) ?? null, [results]);
+  const covers = useCovers(shown);
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
@@ -197,16 +211,20 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
           </h2>
           {busy ? (
             <Sweeping />
-          ) : results && results.length ? (
+          ) : shown && shown.length ? (
             <>
-              <ul className="flex flex-col divide-y divide-border-subtle overflow-hidden rounded-2xl border border-border-subtle bg-surface">
-                {results.slice(0, RESULT_LIMIT).map((comic) => (
+              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {shown.map((comic) => (
                   <li key={comic.id}>
-                    <ComicRow comic={comic} onSelect={onSelect} />
+                    <ComicCard
+                      comic={comic}
+                      cover={comic.cover ?? covers[comic.id] ?? null}
+                      onSelect={onSelect}
+                    />
                   </li>
                 ))}
               </ul>
-              {results.length > RESULT_LIMIT ? (
+              {results && results.length > RESULT_LIMIT ? (
                 <p className="text-xs text-muted">
                   Mostrando {RESULT_LIMIT} de {results.length}. Escreva mais para
                   afinar a busca.
@@ -235,6 +253,46 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
   );
 }
 
+/**
+ * Covers for comics that arrived without one.
+ *
+ * Search results have no cover in them, so they are fetched once the names are
+ * already on screen and each card fills in as its own arrives. What has been
+ * asked for is tracked in a ref rather than derived from the answers, so a
+ * comic with genuinely no cover is asked about once and not on every render.
+ */
+function useCovers(comics: ComicSummary[] | null) {
+  const [covers, setCovers] = useState<Record<number, string | null>>({});
+  const asked = useRef(new Set<number>());
+
+  useEffect(() => {
+    if (!comics?.length) return;
+
+    const wanted = comics
+      .filter((comic) => !comic.cover && !asked.current.has(comic.id))
+      .map((comic) => comic.id);
+    if (!wanted.length) return;
+
+    for (const id of wanted) asked.current.add(id);
+
+    let live = true;
+    fetchCovers(wanted).then((result) => {
+      if (!live || !result.ok) return;
+      setCovers((current) => {
+        const next = { ...current };
+        for (const { id, cover } of result.data) next[id] = cover;
+        return next;
+      });
+    });
+
+    return () => {
+      live = false;
+    };
+  }, [comics]);
+
+  return covers;
+}
+
 function Shelf({
   title,
   comics,
@@ -251,7 +309,7 @@ function Shelf({
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {comics.map((comic) => (
           <li key={comic.id}>
-            <ComicCard comic={comic} onSelect={onSelect} />
+            <ComicCard comic={comic} cover={comic.cover} onSelect={onSelect} />
           </li>
         ))}
       </ul>
@@ -261,9 +319,12 @@ function Shelf({
 
 function ComicCard({
   comic,
+  cover,
   onSelect,
 }: {
   comic: ComicSummary;
+  /** Null while it is still being looked up, or if there simply isn't one. */
+  cover: string | null;
   onSelect: (comic: ComicSummary) => void;
 }) {
   return (
@@ -273,49 +334,28 @@ function ComicCard({
       className="group flex w-full flex-col gap-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       <span className="block aspect-[2/3] w-full overflow-hidden rounded-xl border border-border-subtle bg-surface">
-        {comic.cover ? (
+        {cover ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={comic.cover}
+            src={optimized(cover, COVER_WIDTH)}
             alt=""
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
             loading="lazy"
             decoding="async"
-            referrerPolicy="no-referrer"
             draggable={false}
           />
-        ) : null}
+        ) : (
+          <span className="flex h-full w-full items-end p-2">
+            <span className="line-clamp-3 text-xs text-muted">{comic.name}</span>
+          </span>
+        )}
       </span>
       <span className="line-clamp-2 text-sm text-foreground">{comic.name}</span>
-      {comic.publisher ? (
-        <span className="text-xs text-muted">{comic.publisher}</span>
-      ) : null}
-    </button>
-  );
-}
-
-function ComicRow({
-  comic,
-  onSelect,
-}: {
-  comic: ComicSummary;
-  onSelect: (comic: ComicSummary) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(comic)}
-      className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
-    >
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm text-foreground">{comic.name}</span>
-        <span className="truncate text-xs text-muted">
+      {[comic.publisher, comic.status].filter(Boolean).length ? (
+        <span className="line-clamp-1 text-xs text-muted">
           {[comic.publisher, comic.status].filter(Boolean).join(" · ")}
         </span>
-      </span>
-      <span className="shrink-0 text-xs text-muted" aria-hidden>
-        →
-      </span>
+      ) : null}
     </button>
   );
 }
@@ -379,11 +419,10 @@ function ComicDetail({
           <div className="w-32 shrink-0 overflow-hidden rounded-xl border border-border-subtle bg-surface sm:w-40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={cover}
+              src={optimized(cover, COVER_WIDTH)}
               alt=""
               className="h-full w-full object-cover"
               decoding="async"
-              referrerPolicy="no-referrer"
               draggable={false}
             />
           </div>

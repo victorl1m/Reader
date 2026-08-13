@@ -49,6 +49,16 @@ body[data-reading="true"] {
   overflow: hidden;
 }
 
+/*
+ * Once something has been read on this device, the landing page's pitch is a
+ * paragraph explaining the app to someone already using it. Hiding it here
+ * rather than in React is what keeps it from flashing: the attribute is set by
+ * an inline script before the first paint. See `components/home/hero.tsx`.
+ */
+[data-returning="true"] [data-hero] {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -67,7 +67,9 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "static.hq-now.com", pathname: "/**" },
     ],
-    imageSizes: [96],
+    // 96 for a page thumbnail in the rail, 256 for a cover in the grid. See
+    // `lib/images.ts`, which has to agree with this list.
+    imageSizes: [96, 256],
     deviceSizes: [640],
     qualities: [60],
     // A page is read once and the rail is redrawn on every open; a long TTL

@@ -29,7 +29,13 @@ export type Spot = {
   source?: RemoteSource;
 };
 
-const PREFIX = "flowless:spot:v1:";
+/**
+ * Also read by the inline script in `app/layout.tsx`, which needs to know
+ * whether anything has been read here before the first paint. Exported so that
+ * there is one spelling of it rather than two.
+ */
+export const SPOT_PREFIX = "flowless:spot:v1:";
+const PREFIX = SPOT_PREFIX;
 /** Positions keyed by name+size+mtime, from before this cache was name-keyed. */
 const LEGACY_PREFIX = "flowless:position:v1:";
 /** Cap on remembered positions, so storage can't grow without bound. */

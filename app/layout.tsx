@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ComicProvider } from "@/lib/comic/store";
+import { SPOT_PREFIX } from "@/lib/comic/library";
 import { ServiceWorker } from "@/components/pwa/service-worker";
 import { FileHandler } from "@/components/pwa/file-handler";
 import { SITE, SITE_URL } from "@/lib/site";
@@ -46,6 +47,20 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Marks the document before the first paint if anything has ever been read
+ * here, so the landing page's pitch is hidden for a returning reader instead of
+ * flashing and collapsing on every visit. React can't do this on its own: the
+ * evidence is in `localStorage`, which the server can't see, so anything driven
+ * by state alone only knows once the page is already on screen.
+ *
+ * Deliberately tiny and failure-tolerant: storage can be blocked entirely, and
+ * the only cost of that is seeing the pitch again.
+ */
+const RETURNING_READER = `try{for(var k in localStorage){if(k.lastIndexOf(${JSON.stringify(
+  SPOT_PREFIX,
+)},0)===0){document.documentElement.dataset.returning="true";break}}}catch(e){}`;
+
 export const viewport: Viewport = {
   themeColor: "#09090b",
   colorScheme: "dark",
@@ -63,6 +78,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <script dangerouslySetInnerHTML={{ __html: RETURNING_READER }} />
         <ComicProvider>
           {children}
           <FileHandler />
