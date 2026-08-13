@@ -54,7 +54,7 @@ The interface is in Brazilian Portuguese. Code, comments and docs are in English
 ## Quick start
 
 ```bash
-git clone https://github.com/victorl1m/m-reader.git
+git clone https://github.com/victorl1m/Reader.git
 cd m-reader
 npm install
 npm run dev          # http://localhost:3000
