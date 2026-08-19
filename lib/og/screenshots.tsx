@@ -21,7 +21,7 @@ function TopBar({ narrow, page, total }: { narrow: boolean; page: number; total:
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <img src={markDataUri()} width={28} height={28} alt="" />
         {narrow ? null : (
-          <div style={{ display: "flex", fontSize: 19, color: BRAND.fg }}>Flowless Reader</div>
+          <div style={{ display: "flex", fontSize: 19, color: BRAND.fg }}>Reader</div>
         )}
       </div>
       {narrow ? null : (
@@ -209,7 +209,7 @@ function libraryScene(w: number, h: number, narrow: boolean) {
         <img src={markDataUri()} width={narrow ? 60 : 68} height={narrow ? 60 : 68} alt="" />
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", fontSize: narrow ? 40 : 46, color: BRAND.fg }}>
-            Flowless
+            Reader
           </div>
           <div
             style={{

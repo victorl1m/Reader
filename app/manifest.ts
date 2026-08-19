@@ -4,7 +4,7 @@ import { SITE } from "@/lib/site";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     // The app name, not the page title: the installed app shows this in front
-    // of the document title, and "Flowless Reader: Mangá e Quadrinhos - …"
+    // of the document title, and "Reader: Mangá e Quadrinhos - …"
     // spent the whole window on branding before saying anything.
     name: SITE.name,
     short_name: SITE.shortName,

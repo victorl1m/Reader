@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  /* Flowless brand */
+  /* Reader brand */
   --brand-orange: #ff6a2b;
   --brand-orange-deep: #e8500a;
   --brand-orange-soft: #ffa16b;

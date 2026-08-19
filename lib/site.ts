@@ -24,10 +24,10 @@ export const SITE = {
    * description. `title` is for the document and search results, where the
    * extra words earn their place.
    */
-  name: "Flowless Reader",
+  name: "Reader",
   /** Home screen and app-switcher label. */
-  shortName: "Flowless Reader",
-  title: "Flowless Reader: Mangá e Quadrinhos",
+  shortName: "Reader",
+  title: "Reader: Mangá e Quadrinhos",
   description:
     "Leia mangás e quadrinhos no navegador. Abra um .cbr ou .cbz e comece na hora: quem abre o arquivo é o seu próprio aparelho, e nenhuma página é enviada para lugar nenhum.",
 } as const;

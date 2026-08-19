@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   comic as fetchComic,
   covers as fetchCovers,
@@ -20,6 +21,12 @@ import {
 import type { Comic, ComicSummary } from "@/lib/catalogue/api";
 import { chapterLabel } from "@/lib/catalogue/format";
 import { useOpenChapter } from "@/lib/catalogue/use-open-chapter";
+import {
+  getFavorites,
+  getServerFavorites,
+  setFavorite,
+  subscribeFavorites,
+} from "@/lib/comic/favorites";
 import { COVER_WIDTH, optimized } from "@/lib/images";
 import {
   getIntegrations,
@@ -45,10 +52,13 @@ const RESULT_LIMIT = 24;
 /**
  * The Biblioteca: search, pick a comic, pick a chapter, read it.
  *
- * Everything here is one client component holding one screen's worth of state,
- * rather than a route per comic. The reader is an installable app whose comics
- * live in memory for the session, so a URL per comic would promise a permalink
- * it can't actually restore.
+ * Which comic's detail is open lives in the URL (`?comic=<id>`) rather than in
+ * local state: opening one pushes a history entry, so the back gesture — a
+ * swipe, the hardware button, the browser's own back button — closes the
+ * detail and lands back on the search/shelves screen instead of leaving the
+ * Biblioteca entirely. A chapter opened from here still reads its pages from
+ * memory only for the session; the query param is just metadata, refetched
+ * from the catalogue whenever it's present.
  *
  * Every request goes through a server action, so a stale answer can't be
  * cancelled mid-flight the way an aborted fetch could. Instead each answer
@@ -62,16 +72,46 @@ export function Catalogue() {
     getServerIntegrations,
   ).hqnow;
 
-  const [selected, setSelected] = useState<ComicSummary | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawId = searchParams.get("comic");
+  const parsedId = rawId ? Number(rawId) : NaN;
+  const selectedId = Number.isFinite(parsedId) ? parsedId : null;
+
+  /**
+   * The card just clicked, so its detail shows a name and cover at once
+   * instead of waiting on the fetch. Only the latest pick is kept — good
+   * enough for "just navigated here", and it doesn't survive a remount
+   * (leaving `/biblioteca` and coming back), which only costs that instant
+   * paint. The detail still loads the same way it would cold.
+   */
+  const [pickedSummary, setPickedSummary] = useState<ComicSummary | null>(null);
+
+  const openComic = useCallback(
+    (comic: ComicSummary) => {
+      setPickedSummary(comic);
+      router.push(`/biblioteca?comic=${comic.id}`);
+    },
+    [router],
+  );
+
+  // Mirrors the button the reader tapped to get here: closing the detail is
+  // the same action as the back gesture, so the two can never disagree.
+  const closeComic = useCallback(() => router.back(), [router]);
 
   // Switching the Biblioteca off takes it off screen at once, along with
   // anything it was showing.
   if (!enabled) return <EnablePrompt />;
 
-  return selected ? (
-    <ComicDetail summary={selected} onBack={() => setSelected(null)} />
+  return selectedId !== null ? (
+    <ComicDetail
+      key={selectedId}
+      comicId={selectedId}
+      cachedSummary={pickedSummary?.id === selectedId ? pickedSummary : null}
+      onBack={closeComic}
+    />
   ) : (
-    <Browse onSelect={setSelected} />
+    <Browse onSelect={openComic} />
   );
 }
 
@@ -82,7 +122,7 @@ function EnablePrompt() {
     <section className="flex flex-col gap-4 rounded-2xl border border-border-subtle bg-surface p-6">
       <h1 className="text-2xl font-semibold">A Biblioteca está desligada</h1>
       <p className="text-muted">
-        Com ela ligada, o Flowless procura quadrinhos em um acervo online e abre
+        Com ela ligada, o Reader procura quadrinhos em um acervo online e abre
         os capítulos aqui no leitor. Enquanto estiver desligada, nada sai deste
         aparelho.
       </p>
@@ -133,6 +173,12 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
     recent: ComicSummary[];
   } | null>(null);
   const [shelfError, setShelfError] = useState<string | null>(null);
+
+  const favorites = useSyncExternalStore(
+    subscribeFavorites,
+    getFavorites,
+    getServerFavorites,
+  );
 
   // Wait for a pause in typing before asking the catalogue anything.
   useEffect(() => {
@@ -239,6 +285,19 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
         </section>
       ) : shelves ? (
         <>
+          {favorites.length ? (
+            <Shelf
+              title="Favoritos"
+              comics={favorites.map((favorite) => ({
+                id: favorite.id,
+                name: favorite.name,
+                publisher: favorite.publisher,
+                status: favorite.status,
+                cover: favorite.cover,
+              }))}
+              onSelect={onSelect}
+            />
+          ) : null}
           <Shelf title="Mais lidos" comics={shelves.popular} onSelect={onSelect} />
           <Shelf
             title="Atualizados há pouco"
@@ -363,10 +422,13 @@ function ComicCard({
 // --------------------------------------------------------------- one comic
 
 function ComicDetail({
-  summary,
+  comicId,
+  cachedSummary,
   onBack,
 }: {
-  summary: ComicSummary;
+  comicId: number;
+  /** The card just clicked, if this session has one, for an instant paint. */
+  cachedSummary: ComicSummary | null;
   onBack: () => void;
 }) {
   // Tagged with the comic it describes, so a detail still arriving for the
@@ -377,71 +439,101 @@ function ComicDetail({
     error?: string;
   } | null>(null);
   const { open, opening, failed: openFailed } = useOpenChapter();
+  const favorites = useSyncExternalStore(
+    subscribeFavorites,
+    getFavorites,
+    getServerFavorites,
+  );
 
   useEffect(() => {
-    const id = summary.id;
     let live = true;
 
-    fetchComic(id).then((result) => {
+    fetchComic(comicId).then((result) => {
       if (!live) return;
-      setLoaded(result.ok ? { id, comic: result.data } : { id, error: result.error });
+      setLoaded(
+        result.ok
+          ? { id: comicId, comic: result.data }
+          : { id: comicId, error: result.error },
+      );
     });
 
     return () => {
       live = false;
     };
-  }, [summary.id]);
+  }, [comicId]);
+
+  const current = loaded?.id === comicId ? loaded : null;
+  const comic = current?.comic ?? null;
+  const failed = current?.error ?? null;
+  const name = comic?.name ?? cachedSummary?.name ?? null;
+  const cover = comic?.cover ?? cachedSummary?.cover ?? null;
+  const publisher = comic?.publisher ?? cachedSummary?.publisher ?? null;
+  const status = comic?.status ?? cachedSummary?.status ?? null;
 
   const openChapter = useCallback(
     (chapterId: number) => {
-      void open(chapterId, { comicId: summary.id, comicName: summary.name });
+      void open(chapterId, { comicId, comicName: name });
     },
-    [open, summary.id, summary.name],
+    [open, comicId, name],
   );
 
-  const current = loaded?.id === summary.id ? loaded : null;
-  const comic = current?.comic ?? null;
-  const failed = current?.error ?? null;
-  const cover = comic?.cover ?? summary.cover;
+  const favorite = favorites.some((entry) => entry.id === comicId);
+  const toggleFavorite = useCallback(() => {
+    setFavorite({ id: comicId, name: name ?? "Quadrinho", publisher, status, cover }, !favorite);
+  }, [comicId, name, publisher, status, cover, favorite]);
 
   return (
     <div className="flex flex-col gap-6">
       <button
         type="button"
         onClick={onBack}
-        className="self-start rounded-full px-1 text-sm text-muted transition-colors hover:text-foreground"
+        className="flex items-center gap-1 self-start rounded-full py-1 pl-1 pr-2 text-sm text-muted transition-colors hover:text-foreground"
       >
-        ← Voltar à Biblioteca
+        <ChevronLeftIcon />
+        Voltar à Biblioteca
       </button>
 
-      <div className="flex flex-col gap-5 sm:flex-row">
-        {cover ? (
-          <div className="w-32 shrink-0 overflow-hidden rounded-xl border border-border-subtle bg-surface sm:w-40">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={optimized(cover, COVER_WIDTH)}
-              alt=""
-              className="h-full w-full object-cover"
-              decoding="async"
-              draggable={false}
-            />
-          </div>
-        ) : null}
-
-        <div className="flex min-w-0 flex-col gap-2">
-          <h1 className="text-2xl font-semibold text-balance">{summary.name}</h1>
-          <p className="text-sm text-muted">
-            {[comic?.publisher ?? summary.publisher, comic?.status ?? summary.status]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-          {comic?.synopsis ? (
-            <p className="text-sm leading-relaxed text-muted text-pretty">
-              {comic.synopsis}
-            </p>
+      {name ? (
+        <div className="flex flex-col gap-5 sm:flex-row">
+          {cover ? (
+            <div className="w-32 shrink-0 overflow-hidden rounded-xl border border-border-subtle bg-surface sm:w-40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={optimized(cover, COVER_WIDTH)}
+                alt=""
+                className="h-full w-full object-cover"
+                decoding="async"
+                draggable={false}
+              />
+            </div>
           ) : null}
+
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="min-w-0 text-2xl font-semibold text-balance">{name}</h1>
+              <button
+                type="button"
+                onClick={toggleFavorite}
+                aria-pressed={favorite}
+                aria-label={favorite ? `Remover ${name} dos favoritos` : `Favoritar ${name}`}
+                className={`shrink-0 rounded-full p-2 transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+                  favorite ? "text-brand" : "text-muted"
+                }`}
+              >
+                <StarIcon filled={favorite} />
+              </button>
+            </div>
+            <p className="text-sm text-muted">
+              {[publisher, status].filter(Boolean).join(" · ")}
+            </p>
+            {comic?.synopsis ? (
+              <p className="text-sm leading-relaxed text-muted text-pretty">
+                {comic.synopsis}
+              </p>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {failed ? (
         <p role="alert" className="text-sm text-brand">
@@ -501,5 +593,41 @@ function Sweeping() {
       <div className="h-full w-1/3 rounded-full bg-brand animate-flow-sweep" />
       <span className="sr-only">Carregando…</span>
     </div>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m12 3 2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7Z" />
+    </svg>
   );
 }

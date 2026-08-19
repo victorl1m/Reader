@@ -24,7 +24,7 @@ export function useOpenFile() {
       // never gets read into memory at all.
       if (file.size > LIMITS.maxArchiveBytes) {
         setRejected(
-          `“${file.name}” tem ${(file.size / 1024 ** 3).toFixed(1)} GB. O Flowless abre arquivos de até ${
+          `“${file.name}” tem ${(file.size / 1024 ** 3).toFixed(1)} GB. O Reader abre arquivos de até ${
             LIMITS.maxArchiveBytes / 1024 ** 3
           } GB.`,
         );

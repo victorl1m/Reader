@@ -27,7 +27,14 @@ export function UpdatePrompt() {
     comicStatus !== "idle" && comicStatus !== "error" && Boolean(fileName);
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div
+      className={
+        // Clears the mobile tab bar on a narrow screen, which has no
+        // equivalent on a wide one where there's no tab bar to clear.
+        "pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 " +
+        "pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      }
+    >
       <div
         role="status"
         className="animate-rise pointer-events-auto flex w-full max-w-xl flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-raised/95 p-4 shadow-2xl backdrop-blur"

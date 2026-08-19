@@ -19,12 +19,20 @@ export type Integrations = {
    * the rename.
    */
   hqnow: boolean;
+  /**
+   * Hides the local file picker/drop zone, for someone who only ever wants to
+   * read from the Biblioteca. Meaningless with `hqnow` off — nothing would be
+   * left to open — so it's read as off whenever `hqnow` is, regardless of what
+   * was stored, rather than as a setting that could strand the reader.
+   */
+  libraryOnly: boolean;
 };
 
 const KEY = "flowless:integrations";
 
 const DEFAULTS: Integrations = {
   hqnow: false,
+  libraryOnly: false,
 };
 
 const listeners = new Set<() => void>();
@@ -33,14 +41,23 @@ const listeners = new Set<() => void>();
 let cache: Integrations = DEFAULTS;
 let loaded = false;
 
+/** `libraryOnly` never outlives `hqnow` being off, however it got that way. */
+function normalize(parsed: Partial<Integrations>): Integrations {
+  const hqnow = typeof parsed.hqnow === "boolean" ? parsed.hqnow : DEFAULTS.hqnow;
+  return {
+    hqnow,
+    libraryOnly:
+      hqnow && typeof parsed.libraryOnly === "boolean"
+        ? parsed.libraryOnly
+        : DEFAULTS.libraryOnly,
+  };
+}
+
 function read(): Integrations {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULTS;
-    const parsed = JSON.parse(raw) as Partial<Integrations>;
-    return {
-      hqnow: typeof parsed.hqnow === "boolean" ? parsed.hqnow : DEFAULTS.hqnow,
-    };
+    return normalize(JSON.parse(raw) as Partial<Integrations>);
   } catch {
     // Corrupt JSON or blocked storage means everything stays off, which is the
     // safe direction for a setting that decides whether a third party is
@@ -69,7 +86,7 @@ export function getServerIntegrations(): Integrations {
 }
 
 export function setIntegration(name: keyof Integrations, enabled: boolean) {
-  cache = { ...getIntegrations(), [name]: enabled };
+  cache = normalize({ ...getIntegrations(), [name]: enabled });
   try {
     localStorage.setItem(KEY, JSON.stringify(cache));
   } catch {

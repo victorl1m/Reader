@@ -1,10 +1,8 @@
 /**
- * Flowless Reader brand marks.
- *
- * The mark keeps the Flowless DNA — a stroked speech bubble with an orange
- * accent — and swaps the corporate swirl for an open book, so it reads as
- * "comics" rather than "chat". Geometry lives on a 48×48 grid and is mirrored
- * byte-for-byte in `app/icon.svg`; change one, change the other.
+ * Reader brand marks: a stroked speech bubble with an orange accent, and the
+ * corporate swirl swapped for an open book, so it reads as "comics" rather
+ * than "chat". Geometry lives on a 48×48 grid and is mirrored byte-for-byte in
+ * `app/icon.svg`; change one, change the other.
  */
 
 const BUBBLE_PATH =
@@ -46,34 +44,21 @@ export function LogoMark({
   );
 }
 
-export function Wordmark({
-  className = "",
-  showSub = true,
-}: {
-  className?: string;
-  showSub?: boolean;
-}) {
+export function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`flex flex-col leading-none ${className}`}>
-      <span className="text-[1.05em] font-semibold tracking-tight">
-        Flowless
-      </span>
-      {showSub ? (
-        <span className="mt-1 text-[0.62em] font-medium uppercase tracking-[0.22em] text-muted">
-          Reader
-        </span>
-      ) : null}
+    <span
+      className={`text-[1.05em] font-semibold tracking-tight leading-none ${className}`}
+    >
+      Reader
     </span>
   );
 }
 
 export function Logo({
   size = 32,
-  showSub = true,
   className = "",
 }: {
   size?: number;
-  showSub?: boolean;
   className?: string;
 }) {
   return (
@@ -81,8 +66,8 @@ export function Logo({
       className={`flex items-center gap-3 text-foreground ${className}`}
       style={{ fontSize: Math.round(size * 0.55) }}
     >
-      <LogoMark size={size} title="Flowless Reader" />
-      <Wordmark showSub={showSub} />
+      <LogoMark size={size} title="Reader" />
+      <Wordmark />
     </span>
   );
 }

@@ -8,7 +8,7 @@ type LaunchParams = { files: FileSystemFileHandle[] };
 type LaunchQueue = { setConsumer: (consumer: (params: LaunchParams) => void) => void };
 
 /**
- * Handles OS-level "open with Flowless".
+ * Handles OS-level "open with Reader".
  *
  * The manifest registers the installed app as a handler for `.cbr`/`.cbz`.
  * Without this consumer the OS launches the app and silently drops the file,

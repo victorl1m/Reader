@@ -115,7 +115,7 @@ async function openRar(data: ArrayBuffer): Promise<Archive> {
   const headers = [...extractor.getFileList().fileHeaders];
   if (headers.length > LIMITS.maxEntries) {
     throw new DecodeError(
-      `Este arquivo contém ${headers.length} itens, mais do que o Flowless consegue abrir.`,
+      `Este arquivo contém ${headers.length} itens, mais do que o Reader consegue abrir.`,
       "corrupt",
     );
   }
@@ -187,7 +187,7 @@ function openZip(data: ArrayBuffer): Archive {
 
   if (count > LIMITS.maxEntries) {
     throw new DecodeError(
-      `Este arquivo contém ${count} itens, mais do que o Flowless consegue abrir.`,
+      `Este arquivo contém ${count} itens, mais do que o Reader consegue abrir.`,
       "corrupt",
     );
   }
@@ -360,7 +360,7 @@ async function buildThumbnails(generation: number) {
 async function open(file: File, startIndex: number) {
   if (file.size > LIMITS.maxArchiveBytes) {
     throw new DecodeError(
-      `Esse arquivo tem ${(file.size / 1024 ** 3).toFixed(1)} GB. O Flowless abre arquivos de até ${
+      `Esse arquivo tem ${(file.size / 1024 ** 3).toFixed(1)} GB. O Reader abre arquivos de até ${
         LIMITS.maxArchiveBytes / 1024 ** 3
       } GB.`,
       "too-large",
@@ -380,7 +380,7 @@ async function open(file: File, startIndex: number) {
     archive = openZip(data);
   } else {
     throw new DecodeError(
-      "Esse arquivo não é um arquivo de quadrinho. O Flowless lê .cbr (RAR) e .cbz (ZIP).",
+      "Esse arquivo não é um arquivo de quadrinho. O Reader lê .cbr (RAR) e .cbz (ZIP).",
       "unsupported-format",
     );
   }

@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useOpenFile } from "@/lib/comic/use-open-file";
+import {
+  getIntegrations,
+  getServerIntegrations,
+  subscribeIntegrations,
+} from "@/lib/integrations/prefs";
 
 /**
  * The file input deliberately carries no `accept` filter.
@@ -22,17 +27,25 @@ export function FileDrop() {
   const [dragging, setDragging] = useState(false);
   const inputId = useId();
   const { accept, rejected } = useOpenFile();
+  const restricted = useSyncExternalStore(
+    subscribeIntegrations,
+    getIntegrations,
+    getServerIntegrations,
+  ).libraryOnly;
 
   // Launched from the manifest shortcut (`/?open=1`): go straight to the
   // picker. Read from `location` rather than `searchParams` so the landing
   // page stays fully static and precacheable.
   useEffect(() => {
+    if (restricted) return;
     if (new URLSearchParams(window.location.search).get("open") === "1") {
       inputRef.current?.click();
     }
-  }, []);
+  }, [restricted]);
 
   useEffect(() => {
+    if (restricted) return;
+
     // Depth counter: dragenter/dragleave fire for every child element, so a
     // naive boolean flickers as the pointer crosses the inner content.
     let depth = 0;
@@ -72,7 +85,12 @@ export function FileDrop() {
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("drop", onDrop);
     };
-  }, [accept]);
+  }, [restricted, accept]);
+
+  // Someone who only wants the Biblioteca doesn't need a local file picker
+  // sitting on the home page — the effects above are skipped too, so a drag
+  // from outside doesn't open one either.
+  if (restricted) return null;
 
   return (
     <div className="flex flex-col gap-3">

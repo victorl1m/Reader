@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useOpenChapter } from "@/lib/catalogue/use-open-chapter";
+import { useChapterNeighbors } from "@/lib/catalogue/use-chapter-neighbors";
 import { useComic } from "@/lib/comic/store";
 import { PageRail } from "./page-rail";
 import { PageScroller, type ScrollerHandle } from "./page-scroller";
@@ -68,6 +70,10 @@ export function Reader() {
   const shellRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<ScrollerHandle>(null);
 
+  const neighbors = useChapterNeighbors(source);
+  const { open: openChapter, opening: openingChapter, failed: chapterFailed } =
+    useOpenChapter();
+
   const isWide = useIsWide();
   const reading = status === "ready";
   const scrolling = mode === "scroll";
@@ -89,7 +95,7 @@ export function Reader() {
    * Name the window after whatever is open.
    *
    * The installed app shows the document title beside the app name in window
-   * chrome and the task switcher, where "Flowless Reader - Leitura" tells you
+   * chrome and the task switcher, where "Reader - Leitura" tells you
    * nothing about which comic that window is. The extension is dropped because
    * it is noise in a title bar, not because it means anything here — and only
    * for a real file, since a chapter from an integration is already named for
@@ -282,7 +288,7 @@ export function Reader() {
           </p>
           {error?.code === "encrypted" ? (
             <p className="text-sm text-muted">
-              O Flowless não abre arquivos protegidos por senha. Salve de novo sem
+              O Reader não abre arquivos protegidos por senha. Salve de novo sem
               senha e tente outra vez.
             </p>
           ) : null}
@@ -313,6 +319,18 @@ export function Reader() {
   // A spread shows the current page plus the next one, in visual order.
   const visible = spreadActive && index + 1 < total ? [index, index + 1] : [index];
   const ordered = rtl ? [...visible].reverse() : visible;
+
+  // Offered only right at an edge, and only for a chapter that actually has a
+  // sibling on that side — a one-chapter comic or a local file (no
+  // `neighbors`) shows neither.
+  const atEnd = index === total - 1;
+  const atStart = index === 0;
+  const edge =
+    neighbors && atEnd && neighbors.nextChapterId
+      ? { direction: "next" as const, chapterId: neighbors.nextChapterId }
+      : neighbors && atStart && !atEnd && neighbors.previousChapterId
+        ? { direction: "previous" as const, chapterId: neighbors.previousChapterId }
+        : null;
 
   return (
     <div
@@ -369,6 +387,20 @@ export function Reader() {
         <PageRail pages={pages} index={index} rtl={rtl} onSelect={goTo} />
       ) : null}
 
+      {chrome && edge && neighbors ? (
+        <ChapterEdge
+          direction={edge.direction}
+          busy={openingChapter === edge.chapterId}
+          failed={chapterFailed}
+          onOpen={() =>
+            void openChapter(edge.chapterId, {
+              comicId: neighbors.comicId,
+              comicName: neighbors.comicName,
+            })
+          }
+        />
+      ) : null}
+
       {/* When the chrome is hidden there is no visible way back, so leave one
           affordance that doesn't cover the art. */}
       {!chrome ? (
@@ -388,5 +420,67 @@ export function Reader() {
           : `Página ${index + 1} de ${total}`}
       </div>
     </div>
+  );
+}
+
+/** A prompt to move on to the next (or back to the previous) chapter. */
+function ChapterEdge({
+  direction,
+  busy,
+  failed,
+  onOpen,
+}: {
+  direction: "next" | "previous";
+  busy: boolean;
+  failed: string | null;
+  onOpen: () => void;
+}) {
+  const label = direction === "next" ? "Próximo capítulo" : "Capítulo anterior";
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-2 px-4">
+      {failed ? (
+        <p role="alert" className="pointer-events-auto rounded-full bg-black/70 px-3 py-1 text-xs text-white">
+          {failed}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={busy}
+        className="pointer-events-auto flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-brand-soft disabled:opacity-60"
+      >
+        {busy ? (
+          "Abrindo…"
+        ) : direction === "next" ? (
+          <>
+            {label}
+            <ChevronIcon direction="right" />
+          </>
+        ) : (
+          <>
+            <ChevronIcon direction="left" />
+            {label}
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function ChevronIcon({ direction }: { direction: "left" | "right" }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d={direction === "right" ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} />
+    </svg>
   );
 }

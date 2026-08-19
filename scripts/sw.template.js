@@ -1,5 +1,5 @@
 /**
- * Flowless Reader service worker.
+ * Reader service worker.
  *
  * The app is a pure client-side reader — comics are opened from the user's own
  * disk — so offline support only needs the app shell and the RAR decoder wasm.

@@ -26,7 +26,14 @@ export function InstallPrompt() {
   const manual = status === "manual";
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div
+      className={
+        // Clears the mobile tab bar on a narrow screen, which has no
+        // equivalent on a wide one where there's no tab bar to clear.
+        "pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 " +
+        "pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      }
+    >
       <div
         role="dialog"
         aria-labelledby="install-prompt-title"
@@ -39,7 +46,7 @@ export function InstallPrompt() {
 
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p id="install-prompt-title" className="text-sm font-medium text-foreground">
-              Instale o Flowless Reader
+              Instale o Reader
             </p>
             <p className="text-sm leading-relaxed text-muted">
               Abre em tela cheia, funciona offline e fica na sua tela de início.

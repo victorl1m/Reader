@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="app/icon.svg" width="84" height="84" alt="Flowless Reader">
+<img src="app/icon.svg" width="84" height="84" alt="Reader">
 
-# Flowless Reader
+# Reader
 
 **A manga and comic reader that runs entirely in your browser.**
 
@@ -327,5 +327,5 @@ the bundled docs in `node_modules/next/dist/docs/`.
 The comics you open are your own files and are never part of this project.
 
 <div align="center">
-<sub>Built by <a href="https://github.com/victorl1m">Victor Lima</a> · Flowless</sub>
+<sub>Built by <a href="https://github.com/victorl1m">Victor Lima</a></sub>
 </div>

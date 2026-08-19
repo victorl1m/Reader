@@ -74,6 +74,28 @@ describe("integrations", () => {
     expect(seen).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps libraryOnly off until hqnow is on", async () => {
+    const prefs = await fresh();
+    expect(prefs.getIntegrations().libraryOnly).toBe(false);
+
+    prefs.setIntegration("libraryOnly", true);
+    // hqnow is still off, so this never took: nothing would be left to open.
+    expect(prefs.getIntegrations().libraryOnly).toBe(false);
+
+    prefs.setIntegration("hqnow", true);
+    prefs.setIntegration("libraryOnly", true);
+    expect(prefs.getIntegrations().libraryOnly).toBe(true);
+  });
+
+  it("drops libraryOnly the moment hqnow turns off", async () => {
+    const prefs = await fresh();
+    prefs.setIntegration("hqnow", true);
+    prefs.setIntegration("libraryOnly", true);
+
+    prefs.setIntegration("hqnow", false);
+    expect(prefs.getIntegrations().libraryOnly).toBe(false);
+  });
+
   it("stays off when storage is corrupt or blocked", async () => {
     vi.resetModules();
     vi.stubGlobal("localStorage", {
