@@ -186,11 +186,12 @@ describe("chapterById", () => {
 
 describe("naming", () => {
   const chapter = {
-    id: 9,
+    id: "9",
+    provider: "hqnow" as const,
     name: "O Truque da Faca",
     number: "1",
     oneshot: false,
-    comicId: 5,
+    comicId: "5",
     comicName: "Batman",
     pages: ["https://static.example.com/pg01.jpg"],
   };
@@ -215,9 +216,10 @@ describe("naming", () => {
   it("carries the ids needed to fetch the chapter again", () => {
     expect(chapterSource(chapter)).toEqual({
       kind: "catalogue",
-      comicId: 5,
-      chapterId: 9,
+      provider: "hqnow",
+      comicId: "5",
+      chapterId: "9",
     });
-    expect(chapterSource({ ...chapter, comicId: null }, 12).comicId).toBe(12);
+    expect(chapterSource({ ...chapter, comicId: null }, "12").comicId).toBe("12");
   });
 });

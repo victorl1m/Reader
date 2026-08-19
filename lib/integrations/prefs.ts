@@ -13,17 +13,20 @@
 
 export type Integrations = {
   /**
-   * The Biblioteca: search and read comics from an online catalogue.
+   * Quadrinhos: search and read Western comics from hq-now's catalogue.
    *
    * Stored under its original key, so switching it on once keeps it on across
    * the rename.
    */
   hqnow: boolean;
+  /** Mangá and Manhwa: search and read from MangaDex. */
+  mangadex: boolean;
   /**
    * Hides the local file picker/drop zone, for someone who only ever wants to
-   * read from the Biblioteca. Meaningless with `hqnow` off — nothing would be
-   * left to open — so it's read as off whenever `hqnow` is, regardless of what
-   * was stored, rather than as a setting that could strand the reader.
+   * read from the Biblioteca. Meaningless with both providers off — nothing
+   * would be left to open — so it's read as off whenever neither is on,
+   * regardless of what was stored, rather than as a setting that could strand
+   * the reader.
    */
   libraryOnly: boolean;
 };
@@ -32,6 +35,7 @@ const KEY = "flowless:integrations";
 
 const DEFAULTS: Integrations = {
   hqnow: false,
+  mangadex: false,
   libraryOnly: false,
 };
 
@@ -41,13 +45,15 @@ const listeners = new Set<() => void>();
 let cache: Integrations = DEFAULTS;
 let loaded = false;
 
-/** `libraryOnly` never outlives `hqnow` being off, however it got that way. */
+/** `libraryOnly` never outlives every provider being off, however that happened. */
 function normalize(parsed: Partial<Integrations>): Integrations {
   const hqnow = typeof parsed.hqnow === "boolean" ? parsed.hqnow : DEFAULTS.hqnow;
+  const mangadex = typeof parsed.mangadex === "boolean" ? parsed.mangadex : DEFAULTS.mangadex;
   return {
     hqnow,
+    mangadex,
     libraryOnly:
-      hqnow && typeof parsed.libraryOnly === "boolean"
+      (hqnow || mangadex) && typeof parsed.libraryOnly === "boolean"
         ? parsed.libraryOnly
         : DEFAULTS.libraryOnly,
   };

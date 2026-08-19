@@ -6,7 +6,7 @@
  */
 
 import type { RemoteSource } from "@/lib/comic/types";
-import type { Chapter } from "./api";
+import type { Chapter } from "./types";
 
 /** How a chapter is labelled in a list, on its own. */
 export function chapterLabel(chapter: {
@@ -37,10 +37,11 @@ export function chapterTitle(
 }
 
 /** Where a chapter came from, for resuming it later. */
-export function chapterSource(chapter: Chapter, fallbackComicId?: number): RemoteSource {
+export function chapterSource(chapter: Chapter, fallbackComicId?: string): RemoteSource {
   return {
     kind: "catalogue",
-    comicId: chapter.comicId ?? fallbackComicId ?? 0,
+    provider: chapter.provider,
+    comicId: chapter.comicId ?? fallbackComicId ?? "",
     chapterId: chapter.id,
   };
 }

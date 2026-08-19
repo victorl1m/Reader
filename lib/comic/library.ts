@@ -44,26 +44,34 @@ const MAX_SPOTS = 100;
 /** Names differing only in case or surrounding space are the same book. */
 export const spotKey = (name: string) => `${PREFIX}${name.trim().toLowerCase()}`;
 
+/** A number or a non-empty string, either way as a string — ids were numeric before providers existed. */
+function toId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
 /**
- * A source only survives a round trip if it is still complete and numeric.
+ * A source only survives a round trip if it is still complete.
  *
- * `hqnow`/`hqId` is what the first version of this wrote. Reading it back costs
- * two lines and saves anyone who had already started a chapter from losing
+ * `hqnow`/`hqId` is what the first version of this wrote, with numeric ids and
+ * no `provider` at all — there was only ever one. Reading both back costs a
+ * few lines and saves anyone who had already started a chapter from losing
  * their place to a rename.
  */
 function parseSource(value: unknown): RemoteSource | undefined {
   if (!value || typeof value !== "object") return undefined;
   const source = value as Partial<RemoteSource> & { hqId?: unknown };
   if (source.kind !== "catalogue" && source.kind !== "hqnow") return undefined;
-  if (typeof source.chapterId !== "number" || !Number.isFinite(source.chapterId)) {
-    return undefined;
-  }
-  const comicId = source.comicId ?? source.hqId;
+
+  const chapterId = toId(source.chapterId);
+  if (chapterId === null) return undefined;
+
   return {
     kind: "catalogue",
-    comicId:
-      typeof comicId === "number" && Number.isFinite(comicId) ? comicId : 0,
-    chapterId: source.chapterId,
+    provider: source.provider === "mangadex" ? "mangadex" : "hqnow",
+    comicId: toId(source.comicId) ?? toId(source.hqId) ?? "",
+    chapterId,
   };
 }
 

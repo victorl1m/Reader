@@ -72,21 +72,35 @@ export function SettingsMenu() {
           className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border-subtle bg-surface-raised p-4 shadow-2xl"
         >
           <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground">Biblioteca</span>
-                <span className="text-xs text-muted">
-                  Buscar e ler quadrinhos de um acervo online
-                </span>
-              </div>
-              <Switch
-                label="Biblioteca"
-                on={integrations.hqnow}
-                onChange={(on) => setIntegration("hqnow", on)}
-              />
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-foreground">Biblioteca</span>
+              <span className="text-xs text-muted">
+                Cada acervo é opcional e independente — ligado, ele fala pela
+                internet; seus arquivos locais continuam só neste aparelho.
+              </span>
             </div>
 
-            {integrations.hqnow ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm text-foreground">Quadrinhos</span>
+                <Switch
+                  label="Quadrinhos"
+                  on={integrations.hqnow}
+                  onChange={(on) => setIntegration("hqnow", on)}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm text-foreground">Mangá</span>
+                <Switch
+                  label="Mangá"
+                  on={integrations.mangadex}
+                  onChange={(on) => setIntegration("mangadex", on)}
+                />
+              </div>
+            </div>
+
+            {integrations.hqnow || integrations.mangadex ? (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle pt-4">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium text-foreground">
@@ -102,12 +116,7 @@ export function SettingsMenu() {
                   onChange={(on) => setIntegration("libraryOnly", on)}
                 />
               </div>
-            ) : (
-              <p className="border-t border-border-subtle pt-4 text-xs text-muted">
-                Ligada, as buscas e os capítulos passam pela internet. Seus arquivos
-                locais continuam abrindo só neste aparelho.
-              </p>
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}

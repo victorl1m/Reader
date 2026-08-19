@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useComic } from "@/lib/comic/store";
+import type { Provider } from "@/lib/comic/types";
 import {
   forgetSpot,
   getAllSpots,
@@ -16,13 +17,14 @@ import {
   getIntegrations,
   getServerIntegrations,
   subscribeIntegrations,
+  type Integrations,
 } from "@/lib/integrations/prefs";
 
 /** Rows shown before the list is collapsed behind a "show all". */
 const PREVIEW = 6;
 
 type ShelfItem =
-  | { kind: "comic"; comicId: number; comicName: string; spots: Spot[]; at: number }
+  | { kind: "comic"; provider: Provider; comicId: string; comicName: string; spots: Spot[]; at: number }
   | { kind: "single"; spot: Spot; at: number };
 
 /**
@@ -31,10 +33,11 @@ type ShelfItem =
  * `spots` arrives most-recent-first (see `getAllSpots`), so building each
  * group in that same order keeps its chapters most-recent-first too, with no
  * second sort. A local file has no `source` — and so no comic id to group
- * by — and stays its own row, same as before.
+ * by — and stays its own row, same as before. Grouped by provider and id
+ * together, since `hq-now`'s and MangaDex's ids share no numbering.
  */
 function groupSpots(spots: readonly Spot[]): ShelfItem[] {
-  const groups = new Map<number, Spot[]>();
+  const groups = new Map<string, Spot[]>();
   const items: ShelfItem[] = [];
 
   for (const spot of spots) {
@@ -43,16 +46,18 @@ function groupSpots(spots: readonly Spot[]): ShelfItem[] {
       continue;
     }
 
-    const existing = groups.get(spot.source.comicId);
+    const key = `${spot.source.provider}:${spot.source.comicId}`;
+    const existing = groups.get(key);
     if (existing) {
       existing.push(spot);
       continue;
     }
 
     const group: Spot[] = [spot];
-    groups.set(spot.source.comicId, group);
+    groups.set(key, group);
     items.push({
       kind: "comic",
+      provider: spot.source.provider,
       comicId: spot.source.comicId,
       comicName: spot.name.split(" — ")[0],
       spots: group,
@@ -65,7 +70,7 @@ function groupSpots(spots: readonly Spot[]): ShelfItem[] {
 }
 
 /**
- * Everything read on this device, most recent first, one HQ per entry.
+ * Everything read on this device, most recent first, one title per entry.
  *
  * The storage behind it always held up to a hundred positions; only the last
  * one was ever shown. What each row can offer depends on where the comic came
@@ -84,11 +89,11 @@ export function Shelf() {
   const [wanted, setWanted] = useState<string | null>(null);
 
   const { open: openChapter, opening, failed } = useOpenChapter();
-  const library = useSyncExternalStore(
+  const integrations = useSyncExternalStore(
     subscribeIntegrations,
     getIntegrations,
     getServerIntegrations,
-  ).hqnow;
+  );
 
   // The open comic has its own card above; listing it again would offer to
   // reopen something that is already open.
@@ -100,16 +105,19 @@ export function Shelf() {
   if (!items.length) return null;
 
   const shown = expanded ? items : items.slice(0, PREVIEW);
-  const onFetch = (chapterId: number, fallback: { comicId: number; comicName: string }) =>
-    void openChapter(chapterId, fallback);
+  const onFetch = (
+    provider: Provider,
+    chapterId: string,
+    fallback: { comicId: string; comicName: string },
+  ) => void openChapter(provider, chapterId, fallback);
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-foreground">Você já leu</h2>
         <p className="text-sm text-muted">
-          {items.length === 1 ? "1 quadrinho" : `${items.length} quadrinhos`}, só
-          neste aparelho
+          {items.length === 1 ? "1 título" : `${items.length} títulos`}, só neste
+          aparelho
         </p>
       </div>
 
@@ -134,10 +142,10 @@ export function Shelf() {
         {shown.map((item) =>
           item.kind === "comic" ? (
             <ComicFolder
-              key={`comic-${item.comicId}`}
+              key={`${item.provider}-${item.comicId}`}
               comicName={item.comicName}
               spots={item.spots}
-              library={library}
+              integrations={integrations}
               opening={opening}
               onFetch={onFetch}
             />
@@ -145,7 +153,7 @@ export function Shelf() {
             <SpotRow
               key={spotKey(item.spot.name)}
               spot={item.spot}
-              library={library}
+              integrations={integrations}
               opening={opening}
               onFetch={onFetch}
               onPick={() => {
@@ -174,15 +182,19 @@ export function Shelf() {
 function ComicFolder({
   comicName,
   spots,
-  library,
+  integrations,
   opening,
   onFetch,
 }: {
   comicName: string;
   spots: Spot[];
-  library: boolean;
-  opening: number | null;
-  onFetch: (chapterId: number, fallback: { comicId: number; comicName: string }) => void;
+  integrations: Integrations;
+  opening: string | null;
+  onFetch: (
+    provider: Provider,
+    chapterId: string,
+    fallback: { comicId: string; comicName: string },
+  ) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -210,7 +222,7 @@ function ComicFolder({
               key={spotKey(spot.name)}
               spot={spot}
               label={chapterLabelOf(spot, comicName)}
-              library={library}
+              integrations={integrations}
               opening={opening}
               onFetch={onFetch}
               onPick={() => {}}
@@ -266,7 +278,7 @@ function Progress({ spot }: { spot: Spot }) {
 function SpotRow({
   spot,
   label,
-  library,
+  integrations,
   opening,
   onFetch,
   onPick,
@@ -274,9 +286,13 @@ function SpotRow({
   spot: Spot;
   /** Shown instead of the full remembered name, once inside a comic's folder. */
   label?: string;
-  library: boolean;
-  opening: number | null;
-  onFetch: (chapterId: number, fallback: { comicId: number; comicName: string }) => void;
+  integrations: Integrations;
+  opening: string | null;
+  onFetch: (
+    provider: Provider,
+    chapterId: string,
+    fallback: { comicId: string; comicName: string },
+  ) => void;
   onPick: () => void;
 }) {
   return (
@@ -307,7 +323,7 @@ function SpotRow({
         </button>
         <Reopen
           spot={spot}
-          library={library}
+          integrations={integrations}
           opening={opening}
           onFetch={onFetch}
           onPick={onPick}
@@ -319,19 +335,19 @@ function SpotRow({
 
 function Reopen({
   spot,
-  library,
+  integrations,
   opening,
   onFetch,
   onPick,
 }: {
   spot: Spot;
-  /** Whether the Biblioteca is currently switched on. */
-  library: boolean;
+  integrations: Integrations;
   /** The chapter being fetched right now, if any. */
-  opening: number | null;
+  opening: string | null;
   onFetch: (
-    chapterId: number,
-    fallback: { comicId: number; comicName: string },
+    provider: Provider,
+    chapterId: string,
+    fallback: { comicId: string; comicName: string },
   ) => void;
   onPick: () => void;
 }) {
@@ -346,18 +362,24 @@ function Reopen({
     );
   }
 
+  const source = spot.source;
+  const enabled = source.provider === "mangadex" ? integrations.mangadex : integrations.hqnow;
+
   // Switched off, the only honest offer is a way to switch it back on.
-  if (!library) {
-    return <span className="px-2 text-xs text-muted">Ligue a Biblioteca</span>;
+  if (!enabled) {
+    return (
+      <span className="px-2 text-xs text-muted">
+        Ligue {source.provider === "mangadex" ? "Mangá" : "Quadrinhos"}
+      </span>
+    );
   }
 
-  const source = spot.source;
   return (
     <button
       type="button"
       disabled={opening !== null}
       onClick={() =>
-        onFetch(source.chapterId, {
+        onFetch(source.provider, source.chapterId, {
           comicId: source.comicId,
           comicName: spot.name.split(" — ")[0],
         })

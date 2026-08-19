@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Provider } from "@/lib/comic/types";
 import { useComic } from "@/lib/comic/store";
 import { chapter as fetchChapter } from "./actions";
 import { chapterSource, chapterTitle } from "./format";
@@ -18,19 +19,20 @@ export function useOpenChapter() {
   const { openRemote } = useComic();
   const router = useRouter();
   /** The chapter currently being fetched, so a list can show which one. */
-  const [opening, setOpening] = useState<number | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   const open = useCallback(
     async (
-      chapterId: number,
+      provider: Provider,
+      chapterId: string,
       /** Used only when the chapter's own payload doesn't name its comic. */
-      fallback?: { comicId?: number; comicName?: string | null },
+      fallback?: { comicId?: string; comicName?: string | null },
     ) => {
       setOpening(chapterId);
       setFailed(null);
 
-      const result = await fetchChapter(chapterId);
+      const result = await fetchChapter(provider, chapterId);
       if (!result.ok) {
         setFailed(result.error);
         setOpening(null);

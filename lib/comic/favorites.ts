@@ -6,10 +6,17 @@
  * enough of them to need pruning. A snapshot of the name/cover/publisher is
  * stored alongside the id so a shelf of favorites can be shown without a
  * round trip to the catalogue.
+ *
+ * Keyed by provider and id together — `hq-now`'s numeric ids and MangaDex's
+ * UUIDs share no numbering, so the same id string could otherwise mean two
+ * different comics.
  */
 
+import type { Provider } from "./types";
+
 export type Favorite = {
-  id: number;
+  id: string;
+  provider: Provider;
   name: string;
   publisher: string | null;
   status: string | null;
@@ -20,19 +27,31 @@ export type Favorite = {
 
 const KEY = "flowless:favorites:v1";
 
-function read(): Record<number, Favorite> {
+function favoriteKey(provider: Provider, id: string): string {
+  return `${provider}:${id}`;
+}
+
+/** A number or a non-empty string, either way as a string — ids were numeric before providers existed. */
+function toId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function read(): Record<string, Favorite> {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, Partial<Favorite>>;
-    const result: Record<number, Favorite> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      const id = Number(key);
-      if (!Number.isFinite(id) || typeof value.name !== "string" || !value.name) {
-        continue;
-      }
-      result[id] = {
+    const result: Record<string, Favorite> = {};
+    for (const value of Object.values(parsed)) {
+      const id = toId(value.id);
+      if (id === null || typeof value.name !== "string" || !value.name) continue;
+      // Every favorite starred before MangaDex existed is one from hq-now.
+      const provider: Provider = value.provider === "mangadex" ? "mangadex" : "hqnow";
+      result[favoriteKey(provider, id)] = {
         id,
+        provider,
         name: value.name,
         publisher: typeof value.publisher === "string" ? value.publisher : null,
         status: typeof value.status === "string" ? value.status : null,
@@ -46,7 +65,7 @@ function read(): Record<number, Favorite> {
   }
 }
 
-function write(map: Record<number, Favorite>) {
+function write(map: Record<string, Favorite>) {
   try {
     localStorage.setItem(KEY, JSON.stringify(map));
   } catch {
@@ -99,14 +118,19 @@ export function getServerFavorites(): readonly Favorite[] {
   return NONE;
 }
 
-/** Whether `id` is among a snapshot from `getFavorites`. */
-export function isFavorite(favorites: readonly Favorite[], id: number): boolean {
-  return favorites.some((favorite) => favorite.id === id);
+/** Whether `(provider, id)` is among a snapshot from `getFavorites`. */
+export function isFavorite(
+  favorites: readonly Favorite[],
+  provider: Provider,
+  id: string,
+): boolean {
+  return favorites.some((favorite) => favorite.provider === provider && favorite.id === id);
 }
 
 export function setFavorite(
   comic: {
-    id: number;
+    id: string;
+    provider: Provider;
     name: string;
     publisher?: string | null;
     status?: string | null;
@@ -116,9 +140,11 @@ export function setFavorite(
   at = Date.now(),
 ) {
   const map = read();
+  const key = favoriteKey(comic.provider, comic.id);
   if (on) {
-    map[comic.id] = {
+    map[key] = {
       id: comic.id,
+      provider: comic.provider,
       name: comic.name,
       publisher: comic.publisher ?? null,
       status: comic.status ?? null,
@@ -126,7 +152,7 @@ export function setFavorite(
       at,
     };
   } else {
-    delete map[comic.id];
+    delete map[key];
   }
   write(map);
   publish();

@@ -80,17 +80,23 @@ export type Page = {
 
 export type ComicStatus = "idle" | "opening" | "ready" | "error";
 
+/** Which catalogue a comic was opened from. */
+export type Provider = "hqnow" | "mangadex";
+
 /**
  * Where an open comic came from, when it isn't a file off the device.
  *
  * A local comic has no source: it is whatever the reader picked, and it can
  * only be reopened by picking it again. A comic from an enabled integration
- * can be, so a source carries the little it takes to fetch it a second time.
+ * can be, so a source carries the little it takes to fetch it a second time —
+ * including which catalogue, since `hqnow`'s and MangaDex's ids share no
+ * numbering.
  */
 export type RemoteSource = {
   kind: "catalogue";
-  comicId: number;
-  chapterId: number;
+  provider: Provider;
+  comicId: string;
+  chapterId: string;
 };
 
 /**

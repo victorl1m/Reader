@@ -96,6 +96,28 @@ describe("integrations", () => {
     expect(prefs.getIntegrations().libraryOnly).toBe(false);
   });
 
+  it("switches Quadrinhos and Mangá independently", async () => {
+    const prefs = await fresh();
+    prefs.setIntegration("mangadex", true);
+
+    expect(prefs.getIntegrations()).toMatchObject({ hqnow: false, mangadex: true });
+
+    prefs.setIntegration("hqnow", true);
+    expect(prefs.getIntegrations()).toMatchObject({ hqnow: true, mangadex: true });
+  });
+
+  it("keeps libraryOnly on with only Mangá enabled", async () => {
+    const prefs = await fresh();
+    prefs.setIntegration("mangadex", true);
+    prefs.setIntegration("libraryOnly", true);
+
+    expect(prefs.getIntegrations().libraryOnly).toBe(true);
+
+    prefs.setIntegration("mangadex", false);
+    // Neither provider is on now, so this can't have stayed on either.
+    expect(prefs.getIntegrations().libraryOnly).toBe(false);
+  });
+
   it("stays off when storage is corrupt or blocked", async () => {
     vi.resetModules();
     vi.stubGlobal("localStorage", {

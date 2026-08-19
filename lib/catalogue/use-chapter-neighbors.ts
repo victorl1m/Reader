@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { RemoteSource } from "@/lib/comic/types";
+import type { Provider, RemoteSource } from "@/lib/comic/types";
 import { comic as fetchComic } from "./actions";
 
 export type ChapterNeighbors = {
-  comicId: number;
+  provider: Provider;
+  comicId: string;
   comicName: string;
-  previousChapterId: number | null;
-  nextChapterId: number | null;
+  previousChapterId: string | null;
+  nextChapterId: string | null;
 };
 
 /**
@@ -17,8 +18,8 @@ export type ChapterNeighbors = {
  *
  * Only meaningful for a chapter opened from the Biblioteca — a local file has
  * no `source` and no sibling chapters to speak of. The comic's full chapter
- * list (already in reading order, see `toChapters` in `lib/catalogue/api.ts`)
- * is fetched once per chapter and searched for the current one by id.
+ * list (already in reading order) is fetched once per chapter and searched
+ * for the current one by id.
  */
 export function useChapterNeighbors(source: RemoteSource | null): ChapterNeighbors | null {
   // Tagged with the source it was fetched for, so a stale answer for the
@@ -34,7 +35,7 @@ export function useChapterNeighbors(source: RemoteSource | null): ChapterNeighbo
     if (!source) return;
 
     let live = true;
-    fetchComic(source.comicId).then((result) => {
+    fetchComic(source.provider, source.comicId).then((result) => {
       if (!live || !result.ok) return;
       const chapters = result.data.chapters;
       const at = chapters.findIndex((chapter) => chapter.id === source.chapterId);
@@ -42,6 +43,7 @@ export function useChapterNeighbors(source: RemoteSource | null): ChapterNeighbo
       setLoaded({
         source,
         neighbors: {
+          provider: source.provider,
           comicId: source.comicId,
           comicName: result.data.name,
           previousChapterId: at > 0 ? chapters[at - 1].id : null,

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { LogoMark } from "@/components/brand/logo";
 import type { ReadingMode } from "@/lib/comic/prefs";
 
 function Icon({ path }: { path: string }) {
@@ -34,6 +33,7 @@ const ICONS = {
   scroll: "M8 3h8M8 21h8M12 7v10m0 0-3-3m3 3 3-3",
   paged: "M6 4h12v16H6z",
   width: "M3 6v12m18-12v12M7 12h10m0 0-3-3m3 3-3 3M7 12l3-3m-3 3 3 3",
+  back: "m15 6-6 6 6 6",
 };
 
 function ToolButton({
@@ -128,7 +128,7 @@ export function ReaderToolbar({
         className="flex h-11 shrink-0 items-center gap-2 rounded-lg px-2 text-foreground transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
         aria-label="Fechar quadrinho e voltar ao início"
       >
-        <LogoMark size={20} />
+        <Icon path={ICONS.back} />
       </Link>
 
       <span className="hidden min-w-0 flex-1 truncate text-sm text-muted md:block">

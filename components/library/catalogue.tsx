@@ -17,13 +17,16 @@ import {
   popular,
   recent,
   search,
+  type ContentType,
 } from "@/lib/catalogue/actions";
-import type { Comic, ComicSummary } from "@/lib/catalogue/api";
+import type { Comic, ComicSummary } from "@/lib/catalogue/types";
 import { chapterLabel } from "@/lib/catalogue/format";
 import { useOpenChapter } from "@/lib/catalogue/use-open-chapter";
+import type { Provider } from "@/lib/comic/types";
 import {
   getFavorites,
   getServerFavorites,
+  isFavorite,
   setFavorite,
   subscribeFavorites,
 } from "@/lib/comic/favorites";
@@ -49,16 +52,37 @@ const SHELF_SIZE = 12;
  */
 const RESULT_LIMIT = 24;
 
+const TYPE_LABEL: Record<ContentType, string> = {
+  quadrinhos: "Quadrinhos",
+  manga: "Mangá",
+  manhwa: "Manhwa",
+};
+
+/** A comic's id, opaque across providers, packed into one query value. */
+function packId(provider: Provider, id: string): string {
+  return `${provider}:${id}`;
+}
+
+function unpackId(value: string | null): { provider: Provider; id: string } | null {
+  if (!value) return null;
+  const at = value.indexOf(":");
+  if (at === -1) return null;
+  const provider = value.slice(0, at);
+  const id = value.slice(at + 1);
+  if ((provider !== "hqnow" && provider !== "mangadex") || !id) return null;
+  return { provider, id };
+}
+
 /**
  * The Biblioteca: search, pick a comic, pick a chapter, read it.
  *
- * Which comic's detail is open lives in the URL (`?comic=<id>`) rather than in
- * local state: opening one pushes a history entry, so the back gesture — a
- * swipe, the hardware button, the browser's own back button — closes the
- * detail and lands back on the search/shelves screen instead of leaving the
- * Biblioteca entirely. A chapter opened from here still reads its pages from
- * memory only for the session; the query param is just metadata, refetched
- * from the catalogue whenever it's present.
+ * Which comic's detail is open lives in the URL (`?comic=<provider>:<id>`)
+ * rather than in local state: opening one pushes a history entry, so the back
+ * gesture — a swipe, the hardware button, the browser's own back button —
+ * closes the detail and lands back on the search/shelves screen instead of
+ * leaving the Biblioteca entirely. A chapter opened from here still reads its
+ * pages from memory only for the session; the query param is just metadata,
+ * refetched from the catalogue whenever it's present.
  *
  * Every request goes through a server action, so a stale answer can't be
  * cancelled mid-flight the way an aborted fetch could. Instead each answer
@@ -66,17 +90,16 @@ const RESULT_LIMIT = 24;
  * screen — which is also what makes an out-of-order reply harmless.
  */
 export function Catalogue() {
-  const enabled = useSyncExternalStore(
+  const integrations = useSyncExternalStore(
     subscribeIntegrations,
     getIntegrations,
     getServerIntegrations,
-  ).hqnow;
+  );
+  const enabled = integrations.hqnow || integrations.mangadex;
 
   const router = useRouter();
   const searchParams = useSearchParams();
-  const rawId = searchParams.get("comic");
-  const parsedId = rawId ? Number(rawId) : NaN;
-  const selectedId = Number.isFinite(parsedId) ? parsedId : null;
+  const selected = unpackId(searchParams.get("comic"));
 
   /**
    * The card just clicked, so its detail shows a name and cover at once
@@ -90,7 +113,7 @@ export function Catalogue() {
   const openComic = useCallback(
     (comic: ComicSummary) => {
       setPickedSummary(comic);
-      router.push(`/biblioteca?comic=${comic.id}`);
+      router.push(`/biblioteca?comic=${packId(comic.provider, comic.id)}`);
     },
     [router],
   );
@@ -99,19 +122,28 @@ export function Catalogue() {
   // the same action as the back gesture, so the two can never disagree.
   const closeComic = useCallback(() => router.back(), [router]);
 
-  // Switching the Biblioteca off takes it off screen at once, along with
-  // anything it was showing.
+  // Switching every acervo off takes the Biblioteca off screen at once, along
+  // with anything it was showing.
   if (!enabled) return <EnablePrompt />;
 
-  return selectedId !== null ? (
+  return selected ? (
     <ComicDetail
-      key={selectedId}
-      comicId={selectedId}
-      cachedSummary={pickedSummary?.id === selectedId ? pickedSummary : null}
+      key={packId(selected.provider, selected.id)}
+      provider={selected.provider}
+      comicId={selected.id}
+      cachedSummary={
+        pickedSummary?.provider === selected.provider && pickedSummary?.id === selected.id
+          ? pickedSummary
+          : null
+      }
       onBack={closeComic}
     />
   ) : (
-    <Browse onSelect={openComic} />
+    <Browse
+      onSelect={openComic}
+      hqnow={integrations.hqnow}
+      mangadex={integrations.mangadex}
+    />
   );
 }
 
@@ -122,9 +154,9 @@ function EnablePrompt() {
     <section className="flex flex-col gap-4 rounded-2xl border border-border-subtle bg-surface p-6">
       <h1 className="text-2xl font-semibold">A Biblioteca está desligada</h1>
       <p className="text-muted">
-        Com ela ligada, o Reader procura quadrinhos em um acervo online e abre
-        os capítulos aqui no leitor. Enquanto estiver desligada, nada sai deste
-        aparelho.
+        Ligue ao menos um acervo para procurar quadrinhos ou mangás online e abrir
+        os capítulos aqui no leitor. Enquanto ambos estiverem desligados, nada sai
+        deste aparelho.
       </p>
       <div className="flex flex-wrap gap-2">
         <button
@@ -132,7 +164,14 @@ function EnablePrompt() {
           onClick={() => setIntegration("hqnow", true)}
           className="flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
-          Ligar a Biblioteca
+          Ligar Quadrinhos
+        </button>
+        <button
+          type="button"
+          onClick={() => setIntegration("mangadex", true)}
+          className="flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-medium text-black transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          Ligar Mangá
         </button>
         <Link
           href="/"
@@ -147,32 +186,58 @@ function EnablePrompt() {
 
 // --------------------------------------------------------------- browse
 
-function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
+function Browse({
+  onSelect,
+  hqnow,
+  mangadex,
+}: {
+  onSelect: (comic: ComicSummary) => void;
+  hqnow: boolean;
+  mangadex: boolean;
+}) {
   const searchId = useId();
+
+  const available = useMemo<ContentType[]>(
+    () => [
+      ...(hqnow ? (["quadrinhos"] as const) : []),
+      ...(mangadex ? (["manga", "manhwa"] as const) : []),
+    ],
+    [hqnow, mangadex],
+  );
+
+  const [selectedType, setSelectedType] = useState<ContentType>(available[0] ?? "quadrinhos");
+  // A provider switched off mid-session can leave `selectedType` pointing at a
+  // tab that no longer exists; derived rather than corrected in an effect, so
+  // there's no tick where the stale tab is still what's on screen.
+  const type = available.includes(selectedType) ? selectedType : (available[0] ?? "quadrinhos");
+
   const [term, setTerm] = useState("");
   const [query, setQuery] = useState("");
 
   /**
-   * The last answer the catalogue gave, tagged with the query it answered.
-   *
-   * Held as one tagged value rather than as `results` + `busy` + `error` kept
-   * in step by hand: an answer for a query the reader has since typed past is
-   * simply not the current one, so "still searching" is something to derive
-   * rather than a flag that can disagree with what is on screen.
+   * The last answer the catalogue gave, tagged with the question it answered —
+   * the term and which acervo it was asked of. Held as one tagged value rather
+   * than as `results` + `busy` + `error` kept in step by hand: an answer for a
+   * question the reader has since moved past (by typing, or by switching tabs)
+   * is simply not the current one, so "still searching" is something to
+   * derive rather than a flag that can disagree with what is on screen.
    */
   const [answer, setAnswer] = useState<{
+    type: ContentType;
     query: string;
     results?: ComicSummary[];
     error?: string;
   } | null>(null);
   /** The question in flight, so a slower earlier reply can be ignored. */
-  const asked = useRef("");
+  const asked = useRef({ type, query: "" });
 
-  const [shelves, setShelves] = useState<{
-    popular: ComicSummary[];
-    recent: ComicSummary[];
+  /** Tagged the same way as `answer`, but per tab rather than per query. */
+  const [shelfAnswer, setShelfAnswer] = useState<{
+    type: ContentType;
+    popular?: ComicSummary[];
+    recent?: ComicSummary[];
+    error?: string;
   } | null>(null);
-  const [shelfError, setShelfError] = useState<string | null>(null);
 
   const favorites = useSyncExternalStore(
     subscribeFavorites,
@@ -189,38 +254,48 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
 
   useEffect(() => {
     if (query.length < MIN_QUERY) return;
-    asked.current = query;
+    asked.current = { type, query };
 
-    search(query).then((result) => {
-      if (asked.current !== query) return;
+    search(type, query).then((result) => {
+      if (asked.current.type !== type || asked.current.query !== query) return;
       setAnswer(
-        result.ok ? { query, results: result.data } : { query, error: result.error },
+        result.ok
+          ? { type, query, results: result.data }
+          : { type, query, error: result.error },
       );
     });
-  }, [query]);
+  }, [type, query]);
 
-  // The shelves are the empty state, so they are fetched once and kept.
+  // The shelves are the empty state, so they are fetched once per tab and kept.
   useEffect(() => {
     let live = true;
 
-    Promise.all([popular(SHELF_SIZE), recent(SHELF_SIZE)]).then(([top, fresh]) => {
-      if (!live) return;
-      if (!top.ok || !fresh.ok) {
-        setShelfError(top.ok ? (fresh.ok ? null : fresh.error) : top.error);
-        return;
-      }
-      setShelves({ popular: top.data, recent: fresh.data });
-    });
+    Promise.all([popular(type, SHELF_SIZE), recent(type, SHELF_SIZE)]).then(
+      ([top, fresh]) => {
+        if (!live) return;
+        if (!top.ok || !fresh.ok) {
+          setShelfAnswer({ type, error: top.ok ? (fresh.ok ? undefined : fresh.error) : top.error });
+          return;
+        }
+        setShelfAnswer({ type, popular: top.data, recent: fresh.data });
+      },
+    );
 
     return () => {
       live = false;
     };
-  }, []);
+  }, [type]);
 
   const searching = query.length >= MIN_QUERY;
-  const current = answer?.query === query ? answer : null;
+  const current = answer?.query === query && answer?.type === type ? answer : null;
   const results = current?.results ?? null;
   const busy = searching && current === null;
+  const currentShelfAnswer = shelfAnswer?.type === type ? shelfAnswer : null;
+  const currentShelves =
+    currentShelfAnswer?.popular && currentShelfAnswer.recent
+      ? { popular: currentShelfAnswer.popular, recent: currentShelfAnswer.recent }
+      : null;
+  const shelfError = currentShelfAnswer?.error ?? null;
   const failed = (searching ? current?.error : shelfError) ?? null;
 
   // Memoised so the cover lookup below keys off the answer, not off renders.
@@ -229,16 +304,41 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
 
   return (
     <div className="flex flex-col gap-8">
+      {available.length > 1 ? (
+        <div role="tablist" aria-label="Tipo de conteúdo" className="flex flex-wrap gap-1">
+          {available.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="tab"
+              aria-selected={type === option}
+              onClick={() => setSelectedType(option)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand ${
+                type === option
+                  ? "bg-brand text-black"
+                  : "bg-surface text-muted hover:text-foreground"
+              }`}
+            >
+              {TYPE_LABEL[option]}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2">
         <label htmlFor={searchId} className="text-sm text-muted">
-          Procurar na Biblioteca
+          Procurar em {TYPE_LABEL[type]}
         </label>
         <input
           id={searchId}
           type="search"
           value={term}
           onChange={(event) => setTerm(event.target.value)}
-          placeholder="Batman, Homem-Aranha, Sandman…"
+          placeholder={
+            type === "quadrinhos"
+              ? "Batman, Homem-Aranha, Sandman…"
+              : "Solo Leveling, One Piece, Jujutsu Kaisen…"
+          }
           autoComplete="off"
           className="min-h-12 rounded-2xl border border-border-subtle bg-surface px-4 text-base text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
         />
@@ -261,7 +361,7 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
             <>
               <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {shown.map((comic) => (
-                  <li key={comic.id}>
+                  <li key={packId(comic.provider, comic.id)}>
                     <ComicCard
                       comic={comic}
                       cover={comic.cover ?? covers[comic.id] ?? null}
@@ -283,25 +383,15 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
             </p>
           ) : null}
         </section>
-      ) : shelves ? (
+      ) : currentShelves ? (
         <>
           {favorites.length ? (
-            <Shelf
-              title="Favoritos"
-              comics={favorites.map((favorite) => ({
-                id: favorite.id,
-                name: favorite.name,
-                publisher: favorite.publisher,
-                status: favorite.status,
-                cover: favorite.cover,
-              }))}
-              onSelect={onSelect}
-            />
+            <Shelf title="Favoritos" comics={favorites} onSelect={onSelect} />
           ) : null}
-          <Shelf title="Mais lidos" comics={shelves.popular} onSelect={onSelect} />
+          <Shelf title="Mais lidos" comics={currentShelves.popular} onSelect={onSelect} />
           <Shelf
             title="Atualizados há pouco"
-            comics={shelves.recent}
+            comics={currentShelves.recent}
             onSelect={onSelect}
           />
         </>
@@ -315,14 +405,16 @@ function Browse({ onSelect }: { onSelect: (comic: ComicSummary) => void }) {
 /**
  * Covers for comics that arrived without one.
  *
- * Search results have no cover in them, so they are fetched once the names are
- * already on screen and each card fills in as its own arrives. What has been
- * asked for is tracked in a ref rather than derived from the answers, so a
- * comic with genuinely no cover is asked about once and not on every render.
+ * Only ever true for `hq-now` results — search answers those without covers,
+ * so they are fetched once the names are already on screen and each card
+ * fills in as its own arrives. MangaDex summaries always carry a cover
+ * already, so they never enter `wanted`. What has been asked for is tracked
+ * in a ref rather than derived from the answers, so a comic with genuinely no
+ * cover is asked about once and not on every render.
  */
 function useCovers(comics: ComicSummary[] | null) {
-  const [covers, setCovers] = useState<Record<number, string | null>>({});
-  const asked = useRef(new Set<number>());
+  const [covers, setCovers] = useState<Record<string, string | null>>({});
+  const asked = useRef(new Set<string>());
 
   useEffect(() => {
     if (!comics?.length) return;
@@ -358,7 +450,7 @@ function Shelf({
   onSelect,
 }: {
   title: string;
-  comics: ComicSummary[];
+  comics: readonly ComicSummary[];
   onSelect: (comic: ComicSummary) => void;
 }) {
   if (!comics.length) return null;
@@ -367,7 +459,7 @@ function Shelf({
       <h2 className="text-sm font-medium text-muted">{title}</h2>
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {comics.map((comic) => (
-          <li key={comic.id}>
+          <li key={packId(comic.provider, comic.id)}>
             <ComicCard comic={comic} cover={comic.cover} onSelect={onSelect} />
           </li>
         ))}
@@ -422,11 +514,13 @@ function ComicCard({
 // --------------------------------------------------------------- one comic
 
 function ComicDetail({
+  provider,
   comicId,
   cachedSummary,
   onBack,
 }: {
-  comicId: number;
+  provider: Provider;
+  comicId: string;
   /** The card just clicked, if this session has one, for an instant paint. */
   cachedSummary: ComicSummary | null;
   onBack: () => void;
@@ -434,7 +528,7 @@ function ComicDetail({
   // Tagged with the comic it describes, so a detail still arriving for the
   // previous one is never mistaken for this one's. See `Browse`.
   const [loaded, setLoaded] = useState<{
-    id: number;
+    id: string;
     comic?: Comic;
     error?: string;
   } | null>(null);
@@ -448,7 +542,7 @@ function ComicDetail({
   useEffect(() => {
     let live = true;
 
-    fetchComic(comicId).then((result) => {
+    fetchComic(provider, comicId).then((result) => {
       if (!live) return;
       setLoaded(
         result.ok
@@ -460,7 +554,7 @@ function ComicDetail({
     return () => {
       live = false;
     };
-  }, [comicId]);
+  }, [provider, comicId]);
 
   const current = loaded?.id === comicId ? loaded : null;
   const comic = current?.comic ?? null;
@@ -471,16 +565,19 @@ function ComicDetail({
   const status = comic?.status ?? cachedSummary?.status ?? null;
 
   const openChapter = useCallback(
-    (chapterId: number) => {
-      void open(chapterId, { comicId, comicName: name });
+    (chapterId: string) => {
+      void open(provider, chapterId, { comicId, comicName: name });
     },
-    [open, comicId, name],
+    [open, provider, comicId, name],
   );
 
-  const favorite = favorites.some((entry) => entry.id === comicId);
+  const favorite = isFavorite(favorites, provider, comicId);
   const toggleFavorite = useCallback(() => {
-    setFavorite({ id: comicId, name: name ?? "Quadrinho", publisher, status, cover }, !favorite);
-  }, [comicId, name, publisher, status, cover, favorite]);
+    setFavorite(
+      { id: comicId, provider, name: name ?? "Quadrinho", publisher, status, cover },
+      !favorite,
+    );
+  }, [comicId, provider, name, publisher, status, cover, favorite]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -575,7 +672,7 @@ function ComicDetail({
             </ul>
           </section>
         ) : (
-          <p className="text-muted">Esse quadrinho ainda não tem capítulos por aqui.</p>
+          <p className="text-muted">Esse título ainda não tem capítulos por aqui.</p>
         )
       ) : null}
     </div>

@@ -387,13 +387,13 @@ export function Reader() {
         <PageRail pages={pages} index={index} rtl={rtl} onSelect={goTo} />
       ) : null}
 
-      {chrome && edge && neighbors ? (
+      {edge && neighbors ? (
         <ChapterEdge
           direction={edge.direction}
           busy={openingChapter === edge.chapterId}
           failed={chapterFailed}
           onOpen={() =>
-            void openChapter(edge.chapterId, {
+            void openChapter(neighbors.provider, edge.chapterId, {
               comicId: neighbors.comicId,
               comicName: neighbors.comicName,
             })

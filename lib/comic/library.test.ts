@@ -131,18 +131,37 @@ describe("library", () => {
     const library = await fresh();
     library.rememberSpot("Batman — #1", 2, 25, 1000, {
       kind: "catalogue",
-      comicId: 5,
-      chapterId: 9,
+      provider: "hqnow",
+      comicId: "5",
+      chapterId: "9",
     });
 
     expect(library.getAllSpots()[0].source).toEqual({
       kind: "catalogue",
-      comicId: 5,
-      chapterId: 9,
+      provider: "hqnow",
+      comicId: "5",
+      chapterId: "9",
     });
     // A local file has none, and never gains one.
     library.rememberSpot("local.cbr", 1, 10, 2000);
     expect(library.recallSpot("local.cbr")?.source).toBeUndefined();
+  });
+
+  it("remembers a MangaDex source, whose ids are UUIDs rather than numbers", async () => {
+    const library = await fresh();
+    library.rememberSpot("Solo Leveling — #1", 0, 40, 1000, {
+      kind: "catalogue",
+      provider: "mangadex",
+      comicId: "ade0306c-f4b6-4890-9edb-1ddf04df2039",
+      chapterId: "0e1aa0f0-a064-4152-9313-c9d3a9a1683d",
+    });
+
+    expect(library.getAllSpots()[0].source).toEqual({
+      kind: "catalogue",
+      provider: "mangadex",
+      comicId: "ade0306c-f4b6-4890-9edb-1ddf04df2039",
+      chapterId: "0e1aa0f0-a064-4152-9313-c9d3a9a1683d",
+    });
   });
 
   it("still reads a position saved under the first naming, so nobody loses their page", async () => {
@@ -160,8 +179,30 @@ describe("library", () => {
 
     expect(library.recallSpot("Batman — #1")?.source).toEqual({
       kind: "catalogue",
-      comicId: 5,
-      chapterId: 9,
+      provider: "hqnow",
+      comicId: "5",
+      chapterId: "9",
+    });
+  });
+
+  it("reads a position saved before MangaDex existed as hq-now, with no provider stored", async () => {
+    const library = await fresh();
+    localStorage.setItem(
+      library.spotKey("Batman — #1"),
+      JSON.stringify({
+        name: "Batman — #1",
+        index: 2,
+        total: 25,
+        at: 1000,
+        source: { kind: "catalogue", comicId: 5, chapterId: 9 },
+      }),
+    );
+
+    expect(library.recallSpot("Batman — #1")?.source).toEqual({
+      kind: "catalogue",
+      provider: "hqnow",
+      comicId: "5",
+      chapterId: "9",
     });
   });
 

@@ -66,6 +66,11 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "static.hq-now.com", pathname: "/**" },
+      // MangaDex covers, one fixed host.
+      { protocol: "https", hostname: "uploads.mangadex.org", pathname: "/covers/**" },
+      // MangaDex page images, served from a different at-home node per
+      // chapter — the label before the base domain varies, hence the wildcard.
+      { protocol: "https", hostname: "*.mangadex.network", pathname: "/data/**" },
     ],
     // 96 for a page thumbnail in the rail, 256 for a cover in the grid. See
     // `lib/images.ts`, which has to agree with this list.
